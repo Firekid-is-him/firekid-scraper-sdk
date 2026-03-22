@@ -1,4 +1,4 @@
-import Cron from 'croner'
+import { Cron } from 'croner'
 import type { Task } from '../types.js'
 import { logger } from '../logger/logger.js'
 
