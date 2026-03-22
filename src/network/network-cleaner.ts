@@ -36,7 +36,9 @@ export class NetworkCleaner {
       '*mixpanel.com*'
     ]
 
-    await page.route(trackers, route => route.abort())
+    for (const tracker of trackers) {
+      await page.route(tracker, route => route.abort())
+    }
 
     logger.debug('[network-cleaner] Blocked analytics trackers')
   }
