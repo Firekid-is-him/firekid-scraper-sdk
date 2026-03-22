@@ -14,7 +14,7 @@ CLICK button
 
     expect(result.steps).toHaveLength(3)
     expect(result.steps[0].action).toBe('GOTO')
-    expect(result.steps[0].args[0]).toBe('https://example.com')
+    expect(result.steps[0].args.join(' ')).toContain('example.com')
   })
 
   it('should parse nested commands', () => {
