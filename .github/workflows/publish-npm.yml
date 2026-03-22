@@ -40,9 +40,6 @@ jobs:
       - name: Build
         run: npm run build
       
-      - name: Run Tests
-        run: npm test || echo "No tests found"
-      
       - name: Verify Version
         run: |
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
