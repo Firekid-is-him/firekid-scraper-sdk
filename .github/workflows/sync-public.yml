@@ -44,7 +44,7 @@ jobs:
           node-version: '20'
       
       - name: Update Version in package.json
-        run: npm version ${{ inputs.version }} --no-git-tag-version
+        run: npm version ${{ inputs.version }} --no-git-tag-version || echo "Version already set to ${{ inputs.version }}"
       
       - name: Push to Public Repo
         env:
