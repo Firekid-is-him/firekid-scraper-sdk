@@ -41,8 +41,9 @@ jobs:
       - name: Prepare npm README
         run: |
           if [ -f NPM_README.md ]; then
+            rm -f README.md
             mv NPM_README.md README.md
-            echo "Swapped NPM_README.md to README.md"
+            echo "Replaced README.md with NPM_README.md"
           else
             echo "NPM_README.md not found, keeping existing README.md"
           fi
