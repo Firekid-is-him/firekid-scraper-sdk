@@ -2,7 +2,8 @@ import type { BrowserContext } from 'playwright'
 import type { Seed } from '../types.js'
 
 export async function applyWebGLSpoof(context: BrowserContext, seed: Seed): Promise<void> {
-  await context.addInitScript((vendor: string, renderer: string) => {
+  await context.addInitScript((params: { vendor: string, renderer: string }) => {
+    const { vendor, renderer } = params
     const getParameterProxyHandler = {
       apply(target: any, thisArg: any, args: any[]) {
         const param = args[0]
@@ -20,7 +21,7 @@ export async function applyWebGLSpoof(context: BrowserContext, seed: Seed): Prom
 
     const getExtensionProxyHandler = {
       apply(target: any, thisArg: any, args: any[]) {
-        const result = Reflect.apply(target, thisArg, args)
+        const result: any = Reflect.apply(target, thisArg, args)
         
         if (!result) {
           return result
@@ -54,5 +55,5 @@ export async function applyWebGLSpoof(context: BrowserContext, seed: Seed): Prom
       WebGL2RenderingContext.prototype.getExtension,
       getExtensionProxyHandler
     )
-  }, seed.webglVendor, seed.webglRenderer)
+  }, { vendor: seed.webglVendor, renderer: seed.webglRenderer })
 }
