@@ -69,9 +69,14 @@ export class SmartFetch {
 
       this.lastReferer = url
 
+      const headersObj: Record<string, string> = {}
+      response.headers.forEach((value, key) => {
+        headersObj[key] = value
+      })
+
       return {
         status: response.status,
-        headers: Object.fromEntries(response.headers.entries()),
+        headers: headersObj,
         data
       }
     } catch (err: any) {
