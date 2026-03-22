@@ -1,0 +1,21 @@
+{
+  "name": "product-scraper",
+  "description": "Scrape product information from e-commerce site",
+  "steps": [
+    "GOTO https://example-shop.com",
+    "WAIT productGrid",
+    "EXTRACT productTitle",
+    "EXTRACT productPrice",
+    "EXTRACT productImage"
+  ],
+  "selectors": {
+    "productGrid": ".product-grid",
+    "productTitle": "h2.product-title",
+    "productPrice": ".price",
+    "productImage": "img.product-image"
+  },
+  "options": {
+    "headless": true,
+    "timeout": 30000
+  }
+}
