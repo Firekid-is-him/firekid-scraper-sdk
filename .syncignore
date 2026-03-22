@@ -1,0 +1,50 @@
+# ============================================
+# PRIVATE FEATURES - NOT SYNCED TO PUBLIC
+# ============================================
+
+# Premium/Advanced Features
+src/premium/
+src/internal/
+src/experimental/
+
+# Private Configurations
+.env
+.env.production
+config/private.ts
+
+# Deployment Scripts
+scripts/sync-public.js
+scripts/publish-npm.js
+scripts/release.js
+.github/workflows/sync-public.yml
+.github/workflows/publish-npm.yml
+
+# Internal Documentation
+docs/internal/
+PRIVATE_README.md
+
+# Generated Data & Patterns
+data/
+patterns/
+*.db
+sessions/
+history/
+
+# Test Files for Premium Features
+tests/premium/
+
+# Analytics & Telemetry
+logs/
+analytics/
+metrics/
+
+# Build Artifacts
+node_modules/
+dist/
+*.log
+.cache/
+
+# Git Files
+.git/
+.gitattributes
+.syncignore
