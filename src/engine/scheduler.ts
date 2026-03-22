@@ -11,7 +11,7 @@ export class TaskScheduler {
       this.stop(id)
     }
 
-    const job = Cron(cronExpression, async () => {
+    const job = new Cron(cronExpression, async () => {
       logger.info(`[scheduler] Running job: ${id}`)
       try {
         await task()
