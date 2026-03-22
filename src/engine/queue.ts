@@ -3,7 +3,7 @@ import { logger } from '../logger/logger.js'
 
 export class TaskQueue {
   private pending: Task[] = []
-  private processing: Set<string> = new Set()
+  private processing: Map<string, Task> = new Map()
   private completed: Task[] = []
   private failed: Task[] = []
 
@@ -17,7 +17,7 @@ export class TaskQueue {
     const task = this.pending.shift()
     
     if (task) {
-      this.processing.add(task.id)
+      this.processing.set(task.id, task)
       logger.info(`[queue] Processing task ${task.id}`)
     }
 
@@ -25,8 +25,8 @@ export class TaskQueue {
   }
 
   complete(taskId: string): void {
+    const task = this.processing.get(taskId)
     this.processing.delete(taskId)
-    const task = this.findTask(taskId)
     if (task) {
       this.completed.push(task)
       logger.info(`[queue] Task ${taskId} completed`)
@@ -34,8 +34,8 @@ export class TaskQueue {
   }
 
   fail(taskId: string, error: string): void {
+    const task = this.processing.get(taskId)
     this.processing.delete(taskId)
-    const task = this.findTask(taskId)
     
     if (task) {
       task.retries++
@@ -49,13 +49,6 @@ export class TaskQueue {
         logger.error(`[queue] Task ${taskId} failed permanently: ${error}`)
       }
     }
-  }
-
-  private findTask(id: string): Task | undefined {
-    return this.pending.find(t => t.id === id) ||
-           this.processing.get(id) ||
-           this.completed.find(t => t.id === id) ||
-           this.failed.find(t => t.id === id)
   }
 
   getStats(): QueueStats {
