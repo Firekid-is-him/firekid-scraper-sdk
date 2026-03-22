@@ -17,11 +17,10 @@ export class CommandParser {
   }
 
   private parseLine(line: string, lineNum: number): CmdStep | null {
-    // Remove comments: match // at start of line OR preceded by whitespace
-    const stripped = line.replace(/^\s*\/\/.*$|\s\/\/.*$/, '').trim()
-    if (!stripped) return null
-
-    const parts = stripped.split(/\s+/)
+    // Only remove full-line comments (lines that start with //)
+    if (line.trim().startsWith('//')) return null
+    
+    const parts = line.trim().split(/\s+/)
     const action = parts[0].toUpperCase() as CmdAction
     const args = parts.slice(1).map(a => this.resolve(a))
 
