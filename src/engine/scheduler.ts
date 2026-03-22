@@ -1,9 +1,9 @@
-import { Cron } from 'croner'
+import Cron from 'croner'
 import type { Task } from '../types.js'
 import { logger } from '../logger/logger.js'
 
 export class TaskScheduler {
-  private jobs: Map<string, Cron> = new Map()
+  private jobs: Map<string, any> = new Map()
 
   schedule(id: string, cronExpression: string, task: () => Promise<void>): void {
     if (this.jobs.has(id)) {
