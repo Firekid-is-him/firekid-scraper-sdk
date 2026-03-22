@@ -18,9 +18,9 @@ export default defineConfig({
       js: format === 'cjs' ? '.cjs' : '.js'
     }
   },
-  esbuildOptions(options) {
+  esbuildOptions(options, context) {
     options.banner = {
-      js: format === 'cjs' 
+      js: context.format === 'cjs' 
         ? '' 
         : '#!/usr/bin/env node\n'
     }
