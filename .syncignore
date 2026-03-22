@@ -21,7 +21,15 @@ scripts/release.js
 
 # Internal Documentation
 docs/internal/
+docs/github-secrets.md
+docs/github-actions.md
 PRIVATE_README.md
+
+# Internal Project Files
+WORKFLOW_CHECKLIST.md
+PROJECT_SUMMARY.md
+EXTRACTION_GUIDE.md
+FILE_LIST.txt
 
 # Generated Data & Patterns
 data/
