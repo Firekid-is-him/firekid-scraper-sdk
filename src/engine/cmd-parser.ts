@@ -51,7 +51,14 @@ export class CommandParser {
     while (i < lines.length) {
       const raw = lines[i]
       const lineNum = i + 1
-      const trimmed = raw.replace(/\/\/.*$/, '').trimEnd()
+      
+      // Skip full-line comments
+      if (raw.trim().startsWith('//')) {
+        i++
+        continue
+      }
+      
+      const trimmed = raw.trimEnd()
 
       if (!trimmed.trim()) { 
         i++
