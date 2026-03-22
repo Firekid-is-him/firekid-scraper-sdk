@@ -89,7 +89,7 @@ export class DOMAnalyzer {
 
       for (const table of tableElements) {
         const rows = table.querySelectorAll('tr')
-        const headers = Array.from(table.querySelectorAll('th')).map(th => th.textContent?.trim())
+        const headers = Array.from(table.querySelectorAll('th')).map((th: Element) => th.textContent?.trim())
         
         if (rows.length > 2 && headers.length > 0) {
           tables.push({
