@@ -51,8 +51,8 @@ export class CommandExecutor {
     return this.result
   }
 
-  private async runStep(step: CmdStep): Promise<void> {
-    const { action, args, line } = step
+  private async runStep(cmdStep: CmdStep): Promise<void> {
+    const { action, args, line } = cmdStep
     step(this.url, `${action} ${args.join(' ')}`, { mode: 'cmd', step: action })
 
     try {
@@ -316,14 +316,14 @@ export class CommandExecutor {
   private async repeat(step: CmdStep) {
     const selector = step.args[0]
     if (!selector) throw new Error('REPEAT requires a selector')
-    if (!step.children?.length) throw new Error('REPEAT has no child commands')
+    if (!cmdStep.children?.length) throw new Error('REPEAT has no child commands')
 
     const elements = await this.page.$$(selector)
     step(this.url, `REPEAT ${elements.length}x over "${selector}"`, { mode: 'cmd', step: 'REPEAT' })
 
     for (let i = 0; i < elements.length; i++) {
       step(this.url, `  REPEAT iteration ${i + 1}/${elements.length}`, { mode: 'cmd' })
-      for (const child of step.children) {
+      for (const child of cmdStep.children) {
         await this.runStep(child)
       }
     }
@@ -332,12 +332,12 @@ export class CommandExecutor {
   private async conditional(step: CmdStep) {
     const selector = step.args[0]
     if (!selector) throw new Error('IF requires a selector')
-    if (!step.children?.length) throw new Error('IF has no child commands')
+    if (!cmdStep.children?.length) throw new Error('IF has no child commands')
 
     const exists = await this.page.locator(selector).count() > 0
     
-    if (exists && step.children) {
-      for (const child of step.children) {
+    if (exists && cmdStep.children) {
+      for (const child of cmdStep.children) {
         await this.runStep(child)
       }
     }
@@ -345,11 +345,11 @@ export class CommandExecutor {
 
   private async loop(step: CmdStep) {
     const count = parseInt(step.args[0] || '1', 10)
-    if (!step.children?.length) throw new Error('LOOP has no child commands')
+    if (!cmdStep.children?.length) throw new Error('LOOP has no child commands')
 
     for (let i = 0; i < count; i++) {
       step(this.url, `  LOOP iteration ${i + 1}/${count}`, { mode: 'cmd' })
-      for (const child of step.children) {
+      for (const child of cmdStep.children) {
         await this.runStep(child)
       }
     }
