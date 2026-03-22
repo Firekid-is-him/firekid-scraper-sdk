@@ -52,13 +52,13 @@ export async function injectCFTokens(context: BrowserContext, tokens: CFTokens, 
 export async function saveCFSession(page: Page): Promise<any> {
   const context = page.context()
   const cookies = await context.cookies()
-  const localStorage = await page.evaluate(() => JSON.stringify(localStorage))
-  const sessionStorage = await page.evaluate(() => JSON.stringify(sessionStorage))
+  const localStorageData = await page.evaluate(() => JSON.stringify(localStorage))
+  const sessionStorageData = await page.evaluate(() => JSON.stringify(sessionStorage))
 
   return {
     cookies,
-    localStorage,
-    sessionStorage
+    localStorage: localStorageData,
+    sessionStorage: sessionStorageData
   }
 }
 
