@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  scraper:
+    image: firekid-scraper:latest
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - HEADLESS=true
+      - CF_BYPASS=auto
+      - API_ENABLED=true
+    volumes:
+      - ./output:/app/output
+      - ./commands:/app/commands
+    command: node dist/bin/firekid-scraper.js --cmd /app/commands/example.cmd
+
+  worker:
+    image: firekid-scraper:latest
+    environment:
+      - HEADLESS=true
+      - WORKER_ID=1
+    volumes:
+      - ./output:/app/output
+    depends_on:
+      - scraper
