@@ -2,6 +2,8 @@
 
 Advanced web scraping framework built on Playwright with intelligent anti-detection, automatic healing, and distributed crawling capabilities.
 
+**GitHub:** [Firekid-is-him/firekid-scraper-sdk](https://github.com/Firekid-is-him/firekid-scraper-sdk)
+
 ## Features
 
 **Anti-Detection & Stealth:**
@@ -755,6 +757,7 @@ MIT License. See LICENSE file for details.
 ## Support
 
 For issues and questions:
+- GitHub Repository: https://github.com/Firekid-is-him/firekid-scraper-sdk
 - GitHub Issues: Report bugs and request features
 - Documentation: Complete guides in the docs folder
 - Examples: Sample scripts in the examples folder
