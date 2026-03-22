@@ -1,0 +1,19 @@
+name: article-scraper
+description: Extract article content from news website
+steps:
+  - GOTO https://example-news.com
+  - WAIT articleContainer
+  - EXTRACT articleTitle
+  - EXTRACT articleAuthor
+  - EXTRACT articleContent
+  - EXTRACT articleDate
+selectors:
+  articleContainer: article
+  articleTitle: h1.article-title
+  articleAuthor: .author-name
+  articleContent: .article-body
+  articleDate: time
+options:
+  headless: true
+  timeout: 30000
+  bypassCloudflare: true
