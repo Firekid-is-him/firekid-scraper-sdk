@@ -87,9 +87,9 @@ export class CommandExecutor {
         
         case 'BYPASS_CLOUDFLARE': await this.bypassCloudflare(args); break
         
-        case 'REPEAT': await this.repeat(step); break
-        case 'IF': await this.conditional(step); break
-        case 'LOOP': await this.loop(step); break
+        case 'REPEAT': await this.repeat(cmdStep); break
+        case 'IF': await this.conditional(cmdStep); break
+        case 'LOOP': await this.loop(cmdStep); break
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -313,43 +313,43 @@ export class CommandExecutor {
     await this.cfManager.handleCloudflare(this.page, this.url)
   }
 
-  private async repeat(step: CmdStep) {
-    const selector = step.args[0]
+  private async repeat(stepCmd: CmdStep) {
+    const selector = stepCmd.args[0]
     if (!selector) throw new Error('REPEAT requires a selector')
-    if (!cmdStep.children?.length) throw new Error('REPEAT has no child commands')
+    if (!stepCmd.children?.length) throw new Error('REPEAT has no child commands')
 
     const elements = await this.page.$$(selector)
     step(this.url, `REPEAT ${elements.length}x over "${selector}"`, { mode: 'cmd', step: 'REPEAT' })
 
     for (let i = 0; i < elements.length; i++) {
       step(this.url, `  REPEAT iteration ${i + 1}/${elements.length}`, { mode: 'cmd' })
-      for (const child of cmdStep.children) {
+      for (const child of stepCmd.children) {
         await this.runStep(child)
       }
     }
   }
 
-  private async conditional(step: CmdStep) {
-    const selector = step.args[0]
+  private async conditional(stepCmd: CmdStep) {
+    const selector = stepCmd.args[0]
     if (!selector) throw new Error('IF requires a selector')
-    if (!cmdStep.children?.length) throw new Error('IF has no child commands')
+    if (!stepCmd.children?.length) throw new Error('IF has no child commands')
 
     const exists = await this.page.locator(selector).count() > 0
     
-    if (exists && cmdStep.children) {
-      for (const child of cmdStep.children) {
+    if (exists && stepCmd.children) {
+      for (const child of stepCmd.children) {
         await this.runStep(child)
       }
     }
   }
 
-  private async loop(step: CmdStep) {
-    const count = parseInt(step.args[0] || '1', 10)
-    if (!cmdStep.children?.length) throw new Error('LOOP has no child commands')
+  private async loop(stepCmd: CmdStep) {
+    const count = parseInt(stepCmd.args[0] || '1', 10)
+    if (!stepCmd.children?.length) throw new Error('LOOP has no child commands')
 
     for (let i = 0; i < count; i++) {
       step(this.url, `  LOOP iteration ${i + 1}/${count}`, { mode: 'cmd' })
-      for (const child of cmdStep.children) {
+      for (const child of stepCmd.children) {
         await this.runStep(child)
       }
     }
