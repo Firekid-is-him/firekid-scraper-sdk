@@ -53,6 +53,7 @@ export class TaskQueue {
 
   private findTask(id: string): Task | undefined {
     return this.pending.find(t => t.id === id) ||
+           this.processing.get(id) ||
            this.completed.find(t => t.id === id) ||
            this.failed.find(t => t.id === id)
   }
