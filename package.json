@@ -2,6 +2,14 @@
   "name": "@firekid/scraper",
   "version": "1.0.0",
   "description": "The most advanced web scraping machine ever built",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Firekid-is-him/firekid-scraper-sdk.git"
+  },
+  "homepage": "https://github.com/Firekid-is-him/firekid-scraper-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/Firekid-is-him/firekid-scraper-sdk/issues"
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
