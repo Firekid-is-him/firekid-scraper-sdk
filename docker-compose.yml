@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  firekid-scraper:
+    build: .
+    container_name: firekid-scraper
+    ports:
+      - "3000:3000"
+      - "8080:8080"
+    environment:
+      - HEADLESS=true
+      - CF_BYPASS=auto
+      - LOG_LEVEL=info
+      - MAX_QUEUE_WORKERS=5
+      - API_ENABLED=true
+      - API_PORT=3000
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./downloads:/app/downloads
+      - ./logs:/app/logs
+      - ./commands:/app/commands
+    restart: unless-stopped
+    networks:
+      - firekid-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  firekid-worker-1:
+    build: .
+    container_name: firekid-worker-1
+    environment:
+      - HEADLESS=true
+      - WORKER_ID=1
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+    restart: unless-stopped
+    networks:
+      - firekid-network
+    depends_on:
+      - firekid-scraper
+
+  firekid-worker-2:
+    build: .
+    container_name: firekid-worker-2
+    environment:
+      - HEADLESS=true
+      - WORKER_ID=2
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+    restart: unless-stopped
+    networks:
+      - firekid-network
+    depends_on:
+      - firekid-scraper
+
+networks:
+  firekid-network:
+    driver: bridge
+
+volumes:
+  data:
+  output:
+  downloads:
+  logs:
