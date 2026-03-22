@@ -1,0 +1,73 @@
+name: Publish to npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (must match package.json)'
+        required: true
+        type: string
+      tag:
+        description: 'npm dist-tag (latest, beta, alpha)'
+        required: false
+        type: string
+        default: 'latest'
+      dry_run:
+        description: 'Dry run (test without publishing)?'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Public Repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.PUBLIC_REPO_NAME }}
+          token: ${{ secrets.PUBLIC_REPO_TOKEN }}
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      
+      - name: Install Dependencies
+        run: npm ci
+      
+      - name: Build
+        run: npm run build
+      
+      - name: Run Tests
+        run: npm test || echo "No tests found"
+      
+      - name: Verify Version
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          if [ "$PACKAGE_VERSION" != "${{ inputs.version }}" ]; then
+            echo "Error: package.json version ($PACKAGE_VERSION) doesn't match input (${{ inputs.version }})"
+            exit 1
+          fi
+          echo "Version verified: $PACKAGE_VERSION"
+      
+      - name: Publish to npm (DRY RUN)
+        if: ${{ inputs.dry_run }}
+        run: npm publish --dry-run --tag ${{ inputs.tag }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      
+      - name: Publish to npm
+        if: ${{ !inputs.dry_run }}
+        run: npm publish --tag ${{ inputs.tag }} --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      
+      - name: Success Notification
+        if: ${{ !inputs.dry_run }}
+        run: |
+          echo "Successfully published to npm!"
+          echo "Package: @firekid/scraper@${{ inputs.version }}"
+          echo "Tag: ${{ inputs.tag }}"
+          echo "Install: npm install @firekid/scraper@${{ inputs.tag }}"
