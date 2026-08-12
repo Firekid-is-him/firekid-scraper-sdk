@@ -17,7 +17,6 @@ export class CommandParser {
   }
 
   private parseLine(line: string, lineNum: number): CmdStep | null {
-    // Only remove full-line comments (lines that start with //)
     if (line.trim().startsWith('//')) return null
     
     const parts = line.trim().split(/\s+/)
@@ -43,55 +42,65 @@ export class CommandParser {
     return { action, args, line: lineNum }
   }
 
-  parse(content: string, filePath: string = 'unknown'): CmdFile {
-    const lines = content.split('\n')
+  private indentOf(raw: string): number {
+    return raw.match(/^(\s*)/)?.[1].length ?? 0
+  }
+
+  private isBlank(raw: string): boolean {
+    return raw.trim().length === 0
+  }
+
+  private isComment(raw: string): boolean {
+    return raw.trim().startsWith('//')
+  }
+
+  private parseBlock(lines: string[], startIndex: number, blockIndent: number): { steps: CmdStep[]; nextIndex: number } {
     const steps: CmdStep[] = []
-    let i = 0
+    let i = startIndex
 
     while (i < lines.length) {
       const raw = lines[i]
-      const lineNum = i + 1
-      
-      // Skip full-line comments
-      if (raw.trim().startsWith('//')) {
+
+      if (this.isBlank(raw) || this.isComment(raw)) {
         i++
         continue
       }
-      
-      const trimmed = raw.trimEnd()
 
-      if (!trimmed.trim()) { 
-        i++
-        continue 
-      }
+      const indent = this.indentOf(raw)
 
-      const indent = raw.match(/^(\s*)/)?.[1].length ?? 0
+      // stop if this line belongs to the parent block
+      if (indent < blockIndent) break
 
-      if (indent === 0) {
-        const step = this.parseLine(trimmed, lineNum)
-        if (step) {
-          if (step.action === 'REPEAT' || step.action === 'IF' || step.action === 'LOOP') {
-            step.children = []
-            i++
-            while (i < lines.length) {
-              const childRaw = lines[i]
-              const childIndent = childRaw.match(/^(\s*)/)?.[1].length ?? 0
-              if (childIndent === 0) break
-              const childStep = this.parseLine(childRaw.trim(), i + 1)
-              if (childStep) step.children.push(childStep)
-              i++
-            }
-          } else {
-            i++
-          }
-          steps.push(step)
+      const lineNum = i + 1
+      const step = this.parseLine(raw.trim(), lineNum)
+      i++
+
+      if (!step) continue
+
+      if (step.action === 'REPEAT' || step.action === 'IF' || step.action === 'LOOP') {
+        // check if the next real line is indented further in
+        let peek = i
+        while (peek < lines.length && (this.isBlank(lines[peek]) || this.isComment(lines[peek]))) peek++
+
+        if (peek < lines.length && this.indentOf(lines[peek]) > indent) {
+          const childIndent = this.indentOf(lines[peek])
+          const child = this.parseBlock(lines, peek, childIndent)
+          step.children = child.steps
+          i = child.nextIndex
         } else {
-          i++
+          step.children = []
         }
-      } else {
-        i++
       }
+
+      steps.push(step)
     }
+
+    return { steps, nextIndex: i }
+  }
+
+  parse(content: string, filePath: string = 'unknown'): CmdFile {
+    const lines = content.split('\n')
+    const { steps } = this.parseBlock(lines, 0, 0)
 
     const site = path.basename(filePath, '.cmd')
     logger.info(`Parsed ${steps.length} steps from ${filePath}`)
