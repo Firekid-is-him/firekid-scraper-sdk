@@ -17,6 +17,7 @@ export class RateLimiter {
     const validRequests = requests.filter(timestamp => now - timestamp < this.windowMs)
 
     if (validRequests.length >= this.maxRequests) {
+      this.requests.set(key, validRequests)
       logger.warn(`[rate-limiter] Rate limit exceeded for ${key}`)
       return false
     }
@@ -25,6 +26,32 @@ export class RateLimiter {
     this.requests.set(key, validRequests)
 
     return true
+  }
+
+  // clears out keys with no requests left in the window
+  prune(): number {
+    const now = Date.now()
+    let removed = 0
+
+    for (const [key, requests] of this.requests.entries()) {
+      const validRequests = requests.filter(timestamp => now - timestamp < this.windowMs)
+      if (validRequests.length === 0) {
+        this.requests.delete(key)
+        removed++
+      } else if (validRequests.length !== requests.length) {
+        this.requests.set(key, validRequests)
+      }
+    }
+
+    if (removed > 0) {
+      logger.info(`[rate-limiter] Pruned ${removed} stale key(s)`)
+    }
+
+    return removed
+  }
+
+  trackedKeyCount(): number {
+    return this.requests.size
   }
 
   async waitForSlot(key: string = 'default'): Promise<void> {

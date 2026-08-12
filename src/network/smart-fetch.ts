@@ -7,9 +7,19 @@ import path from 'path'
 export class SmartFetch {
   private pageContext: Page | null = null
   private lastReferer: string = ''
+  private manualReferer: string = ''
 
   setPageContext(page: Page): void {
     this.pageContext = page
+  }
+
+  // sets a referer to use on future fetch/download calls until cleared
+  setReferer(referer: string): void {
+    this.manualReferer = referer
+  }
+
+  clearReferer(): void {
+    this.manualReferer = ''
   }
 
   async fetch(options: FetchOptions): Promise<FetchResponse> {
@@ -25,7 +35,7 @@ export class SmartFetch {
       timeout = 30000
     } = options
 
-    const finalReferer = referer || (autoReferer && this.pageContext ? this.pageContext.url() : this.lastReferer)
+    const finalReferer = referer || this.manualReferer || (autoReferer && this.pageContext ? this.pageContext.url() : this.lastReferer)
 
     const finalHeaders: Record<string, string> = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',

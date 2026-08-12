@@ -43,6 +43,7 @@ export class TaskQueue {
       if (task.retries < 3) {
         task.priority = Math.max(0, task.priority - 1)
         this.pending.push(task)
+        this.pending.sort((a, b) => b.priority - a.priority)
         logger.warn(`[queue] Task ${taskId} failed, retrying (${task.retries}/3)`)
       } else {
         this.failed.push(task)
