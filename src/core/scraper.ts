@@ -120,15 +120,45 @@ export class FirekidScraper {
   }
 
   async close(): Promise<void> {
-    if (this.page) await this.page.close()
-    if (this.context) await this.context.close()
-    if (this.browser) await this.browser.close()
-    
+    const errors: Error[] = []
+
+    // close each one on its own so one failing doesn't block the rest
+    if (this.page) {
+      try {
+        await this.page.close()
+      } catch (err) {
+        errors.push(err as Error)
+        logger.warn(`Failed to close page: ${(err as Error).message}`)
+      }
+    }
+
+    if (this.context) {
+      try {
+        await this.context.close()
+      } catch (err) {
+        errors.push(err as Error)
+        logger.warn(`Failed to close context: ${(err as Error).message}`)
+      }
+    }
+
+    if (this.browser) {
+      try {
+        await this.browser.close()
+      } catch (err) {
+        errors.push(err as Error)
+        logger.warn(`Failed to close browser: ${(err as Error).message}`)
+      }
+    }
+
     this.page = null
     this.context = null
     this.browser = null
 
-    logger.info('Firekid Scraper closed')
+    if (errors.length > 0) {
+      logger.error(`Firekid Scraper closed with ${errors.length} error(s)`)
+    } else {
+      logger.info('Firekid Scraper closed')
+    }
   }
 
   getPage(): Page | null {
