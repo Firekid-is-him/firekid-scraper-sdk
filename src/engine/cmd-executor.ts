@@ -305,6 +305,7 @@ export class CommandExecutor {
   private async setReferer(args: string[]) {
     const referer = args[0]
     if (!referer) throw new Error('REFERER requires a URL')
+    this.smartFetch.setReferer(referer)
     logger.info(`Set manual Referer: ${referer}`)
   }
 
