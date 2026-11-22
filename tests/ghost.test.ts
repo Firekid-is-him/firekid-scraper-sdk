@@ -22,7 +22,7 @@ describe('Ghost Module', () => {
     const page = await context.newPage()
     
     const webdriver = await page.evaluate(() => navigator.webdriver)
-    expect(webdriver).toBeUndefined()
+    expect(webdriver).toBe(false)
 
     await browser.close()
   })

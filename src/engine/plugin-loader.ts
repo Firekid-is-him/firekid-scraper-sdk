@@ -50,7 +50,7 @@ export class PluginLoader {
     logger.info(`[plugin-loader] Loaded ${this.plugins.size} plugins`)
   }
 
-  async loadPlugin(filePath: string): Promise<void> {
+  async loadPlugin(filePath: string, options: { throwOnError?: boolean } = {}): Promise<void> {
     const absolute = path.resolve(filePath)
 
     try {
@@ -60,8 +60,7 @@ export class PluginLoader {
       const plugin: Plugin = module.default
 
       if (!isPlugin(plugin)) {
-        logger.warn(`[plugin-loader] Invalid plugin: ${absolute}`)
-        return
+        throw new Error('default export is not a valid plugin (needs name, type and execute)')
       }
 
       if (this.plugins.has(plugin.name)) {
@@ -72,6 +71,10 @@ export class PluginLoader {
       logger.info(`[plugin-loader] Loaded plugin: ${plugin.name} (${plugin.type})`)
     } catch (err: any) {
       logger.error(`[plugin-loader] Failed to load ${absolute}: ${err.message}`)
+
+      if (options.throwOnError) {
+        throw new Error(`Failed to load plugin ${absolute}: ${err.message}`)
+      }
     }
   }
 

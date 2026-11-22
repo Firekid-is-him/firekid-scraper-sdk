@@ -10,7 +10,7 @@ import type {
   CmdFile
 } from '../types.js'
 import { applyGhost } from '../ghost/index.js'
-import { getNewSeed, getSeedForSite, buildUserAgent, buildViewport } from '../ghost/seed.js'
+import { getNewSeed, getSeedForSite, buildUserAgent, buildViewport, alignSeedToBrowser } from '../ghost/seed.js'
 import { CloudflareManager } from '../cloudflare/cloudflare.js'
 import { CommandParser } from '../engine/cmd-parser.js'
 import { CommandExecutor, type CommandExecutorOptions } from '../engine/cmd-executor.js'
@@ -55,6 +55,8 @@ export class FirekidScraper {
   private rateLimiter: RateLimiter | null
   private plugins: PluginLoader | null = null
   private initPromise: Promise<void> | null = null
+  private queue: Promise<unknown> = Promise.resolve()
+  private lastStatus: number | null = null
 
   constructor(userConfig: FirekidConfig = {}) {
     this.config = {
@@ -112,16 +114,18 @@ export class FirekidScraper {
 
     try {
       const seed = this.config.useGhost
-        ? this.pickSeed(url)
+        ? alignSeedToBrowser(this.pickSeed(url), browser.version())
         : null
+
+      const userAgent = this.config.userAgent ?? (seed ? buildUserAgent(seed) : undefined)
 
       const context = await browser.newContext({
         viewport: this.config.viewport ?? (seed ? buildViewport(seed) : { width: 1920, height: 1080 }),
-        userAgent: this.config.userAgent ?? (seed ? buildUserAgent(seed) : undefined)
+        userAgent
       })
 
       if (seed) {
-        await applyGhost(context, { seed })
+        await applyGhost(context, { seed, userAgent })
       }
 
       const guard = this.config.urlGuard
@@ -170,7 +174,21 @@ export class FirekidScraper {
     await this.rateLimiter.waitForSlot(hostOf(url) ?? 'default')
   }
 
+  /*
+   * One scraper owns one page, so calls that drive it run one after another.
+   * Use separate FirekidScraper instances for parallel work.
+   */
+  private serialize<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(task, task)
+    this.queue = run.catch(() => undefined)
+    return run
+  }
+
   async goto(url: string): Promise<void> {
+    await this.serialize(() => this.navigate(url))
+  }
+
+  private async navigate(url: string): Promise<void> {
     await this.init(url)
     const page = this.requirePage()
 
@@ -181,10 +199,12 @@ export class FirekidScraper {
     await this.throttle(url)
 
     logger.info(`Navigating to ${url}`)
-    await page.goto(url, {
+    const response = await page.goto(url, {
       waitUntil: 'domcontentloaded',
       timeout: this.config.timeout
     })
+
+    this.lastStatus = response && !response.headers()['cf-mitigated'] ? response.status() : null
 
     if (this.config.bypassCloudflare) {
       await this.cfManager.handleCloudflare(page, url)
@@ -234,36 +254,50 @@ export class FirekidScraper {
   }
 
   async extract(url: string, selectors: Record<string, string>): Promise<any> {
-    await this.goto(url)
+    return await this.serialize(async () => {
+      await this.navigate(url)
 
-    const { data } = await this.readSelectors(selectors, {})
-    return data
+      const { data } = await this.readSelectors(selectors, {})
+      return data
+    })
   }
 
   async scrape(url: string, options: ScrapeOptions): Promise<ScrapingResult> {
-    await this.goto(url)
-    const page = this.requirePage()
+    const selectors = options?.selectors
 
-    const { data, errors } = await this.readSelectors(options.selectors, {
-      attribute: options.attribute,
-      multiple: options.multiple
+    if (!selectors || typeof selectors !== 'object' || Array.isArray(selectors) || Object.keys(selectors).length === 0) {
+      throw new Error('scrape() needs options.selectors, an object of name to CSS selector')
+    }
+
+    return await this.serialize(async () => {
+      await this.navigate(url)
+      const page = this.requirePage()
+
+      const { data, errors } = await this.readSelectors(selectors, {
+        attribute: options.attribute,
+        multiple: options.multiple
+      })
+
+      if (this.lastStatus !== null && this.lastStatus >= 400) {
+        errors.push(`HTTP ${this.lastStatus} for ${url}`)
+      }
+
+      if (options.screenshot) {
+        const target = typeof options.screenshot === 'string'
+          ? options.screenshot
+          : `screenshot-${Date.now()}.png`
+
+        await page.screenshot({ path: target, fullPage: true })
+        data.screenshot = target
+      }
+
+      return {
+        success: errors.length === 0,
+        data,
+        errors,
+        timestamp: Date.now()
+      }
     })
-
-    if (options.screenshot) {
-      const target = typeof options.screenshot === 'string'
-        ? options.screenshot
-        : `screenshot-${Date.now()}.png`
-
-      await page.screenshot({ path: target, fullPage: true })
-      data.screenshot = target
-    }
-
-    return {
-      success: errors.length === 0,
-      data,
-      errors,
-      timestamp: Date.now()
-    }
   }
 
   async auto(url: string): Promise<ScrapingResult> {
@@ -271,58 +305,65 @@ export class FirekidScraper {
   }
 
   async runMode(url: string, mode: Mode): Promise<ScrapingResult> {
-    await this.goto(url)
-    const page = this.requirePage()
+    return await this.serialize(async () => {
+      await this.navigate(url)
+      const page = this.requirePage()
+      const validateUrl = this.config.urlGuard
 
-    logger.info(`Running ${mode} mode...`)
+      logger.info(`Running ${mode} mode...`)
 
-    switch (mode) {
-      case 'auto': {
-        const { AutoMode } = await import('../modes/auto.js')
-        return await new AutoMode(page).execute(url)
+      switch (mode) {
+        case 'auto': {
+          const { AutoMode } = await import('../modes/auto.js')
+          return await new AutoMode(page, { validateUrl }).execute(url)
+        }
+        case 'downloader': {
+          const { DownloaderMode } = await import('../modes/downloader.js')
+          return await new DownloaderMode(page, { validateUrl }).execute(url)
+        }
+        case 'scrape': {
+          const { ScrapeMode } = await import('../modes/scrape.js')
+          return await new ScrapeMode(page).execute(url)
+        }
+        case 'navigator': {
+          const { NavigatorMode } = await import('../modes/navigator.js')
+          return await new NavigatorMode(page).execute(url)
+        }
+        case 'ssr': {
+          const { SSRMode } = await import('../modes/ssr.js')
+          return await new SSRMode(page).execute(url)
+        }
+        case 'api-hunter': {
+          const { APIHunterMode } = await import('../modes/api-hunter.js')
+          return await new APIHunterMode(page).execute(url)
+        }
+        default:
+          throw new Error(`Unknown mode: ${mode}`)
       }
-      case 'downloader': {
-        const { DownloaderMode } = await import('../modes/downloader.js')
-        return await new DownloaderMode(page, { validateUrl: this.config.urlGuard }).execute(url)
-      }
-      case 'scrape': {
-        const { ScrapeMode } = await import('../modes/scrape.js')
-        return await new ScrapeMode(page).execute(url)
-      }
-      case 'navigator': {
-        const { NavigatorMode } = await import('../modes/navigator.js')
-        return await new NavigatorMode(page).execute(url)
-      }
-      case 'ssr': {
-        const { SSRMode } = await import('../modes/ssr.js')
-        return await new SSRMode(page).execute(url)
-      }
-      case 'api-hunter': {
-        const { APIHunterMode } = await import('../modes/api-hunter.js')
-        return await new APIHunterMode(page).execute(url)
-      }
-      default:
-        throw new Error(`Unknown mode: ${mode}`)
-    }
+    })
   }
 
   async paginate(url: string, nextSelector?: string, options: PaginateOptions = {}): Promise<ScrapingResult> {
-    await this.goto(url)
-    const page = this.requirePage()
+    return await this.serialize(async () => {
+      await this.navigate(url)
+      const page = this.requirePage()
 
-    const { PaginatorMode } = await import('../modes/paginator.js')
-    return await new PaginatorMode(page).execute(url, {
-      ...options,
-      nextSelector: nextSelector ?? options.nextSelector
+      const { PaginatorMode } = await import('../modes/paginator.js')
+      return await new PaginatorMode(page).execute(url, {
+        ...options,
+        nextSelector: nextSelector ?? options.nextSelector
+      })
     })
   }
 
   async infiniteScroll(url: string, options: InfiniteScrollOptions = {}): Promise<ScrapingResult> {
-    await this.goto(url)
-    const page = this.requirePage()
+    return await this.serialize(async () => {
+      await this.navigate(url)
+      const page = this.requirePage()
 
-    const { InfiniteScrollMode } = await import('../modes/infinite-scroll.js')
-    return await new InfiniteScrollMode(page).execute(url, options)
+      const { InfiniteScrollMode } = await import('../modes/infinite-scroll.js')
+      return await new InfiniteScrollMode(page).execute(url, options)
+    })
   }
 
   async runCommandFile(filePath: string, options: CommandExecutorOptions = {}): Promise<ScrapingResult> {
@@ -342,28 +383,31 @@ export class FirekidScraper {
   private async executeCommands(cmdFile: CmdFile, options: CommandExecutorOptions): Promise<ScrapingResult> {
     const firstGoto = cmdFile.steps.find(s => s.action === 'GOTO')?.args[0]
 
-    await this.init(firstGoto)
-    const page = this.requirePage()
+    return await this.serialize(async () => {
+      await this.init(firstGoto)
+      const page = this.requirePage()
 
-    logger.info(`Executing command file: ${cmdFile.site}`)
+      logger.info(`Executing command file: ${cmdFile.site}`)
 
-    const executor = new CommandExecutor(page, firstGoto || '', {
-      validateUrl: this.config.urlGuard,
-      ...options
+      const executor = new CommandExecutor(page, firstGoto || '', {
+        validateUrl: this.config.urlGuard,
+        selectorTimeout: this.config.selectorTimeout,
+        ...options
+      })
+      const result = await executor.execute(cmdFile)
+
+      return {
+        success: result.success,
+        data: result.extracted,
+        errors: result.errors.map(e => e.error),
+        timestamp: Date.now()
+      }
     })
-    const result = await executor.execute(cmdFile)
-
-    return {
-      success: result.success,
-      data: result.extracted,
-      errors: result.errors.map(e => e.error),
-      timestamp: Date.now()
-    }
   }
 
   async loadPlugin(filePath: string): Promise<void> {
     if (!this.plugins) this.plugins = new PluginLoader()
-    await this.plugins.loadPlugin(path.resolve(filePath))
+    await this.plugins.loadPlugin(path.resolve(filePath), { throwOnError: true })
   }
 
   async runPlugin(name: string, options: Record<string, unknown> = {}): Promise<any> {
@@ -375,6 +419,8 @@ export class FirekidScraper {
 
   async close(): Promise<void> {
     const errors: Error[] = []
+
+    await this.queue.catch(() => undefined)
 
     if (this.initPromise) {
       await this.initPromise.catch(() => undefined)

@@ -89,6 +89,11 @@ export interface GhostOptions {
   siteHost?: string
   fresh?: boolean
   seed?: Seed
+  /*
+   * The user agent the context was created with. Client hints, platform and
+   * userAgentData are derived from it so they always agree.
+   */
+  userAgent?: string
 }
 
 export interface CFTokens {

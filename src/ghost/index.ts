@@ -1,11 +1,12 @@
 import type { BrowserContext } from 'playwright'
-import { getSeedForSite, getNewSeed } from './seed.js'
+import { getSeedForSite, getNewSeed, buildUserAgent } from './seed.js'
 import { applyCanvasSpoof } from './canvas.js'
 import { applyWebGLSpoof } from './webgl.js'
 import { applyAudioSpoof } from './audio.js'
 import { applyFontSpoof } from './fonts.js'
 import { applyNavigatorSpoof } from './navigator.js'
 import { validateConsistency } from './consistency.js'
+import { describeUserAgent, secChUa } from './identity.js'
 import { HumanBehavior } from './behavior.js'
 import { logger } from '../logger/logger.js'
 import type { GhostOptions } from '../types.js'
@@ -21,20 +22,28 @@ export async function applyGhost(
 
   validateConsistency(seed)
 
-  logger.info(`[ghost] Applying identity seed: ${seed.id.slice(0, 8)}... | Chrome ${seed.chromeVersion} | ${seed.screenWidth}x${seed.screenHeight}`)
+  const userAgent = options.userAgent ?? buildUserAgent(seed)
+  const info = describeUserAgent(userAgent, seed.chromeVersion)
+
+  logger.info(`[ghost] Applying identity seed: ${seed.id.slice(0, 8)}... | ${info.platform} Chrome ${info.major || 'n/a'} | ${seed.screenWidth}x${seed.screenHeight}`)
 
   await applyCanvasSpoof(context, seed)
-  await applyWebGLSpoof(context, seed)
+  if (info.platform === 'Windows') await applyWebGLSpoof(context, seed)
   await applyAudioSpoof(context, seed)
   await applyFontSpoof(context, seed)
-  await applyNavigatorSpoof(context, seed)
+  await applyNavigatorSpoof(context, seed, info)
 
-  await context.setExtraHTTPHeaders({
-    'Accept-Language': `${seed.language},en;q=0.9`,
-    'sec-ch-ua': `"Chromium";v="${seed.chromeVersion.split('.')[0]}", "Google Chrome";v="${seed.chromeVersion.split('.')[0]}", "Not-A.Brand";v="99"`,
-    'sec-ch-ua-mobile': '?0',
-    'sec-ch-ua-platform': '"Windows"',
-  })
+  const headers: Record<string, string> = {
+    'Accept-Language': seed.language === 'en' ? 'en' : `${seed.language},en;q=0.9`
+  }
+
+  if (info.chromium) {
+    headers['sec-ch-ua'] = secChUa(info)
+    headers['sec-ch-ua-mobile'] = info.mobile ? '?1' : '?0'
+    headers['sec-ch-ua-platform'] = `"${info.platform}"`
+  }
+
+  await context.setExtraHTTPHeaders(headers)
 
   logger.info('[ghost] All fingerprint spoofs applied')
 

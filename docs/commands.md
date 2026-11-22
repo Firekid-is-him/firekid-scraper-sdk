@@ -198,6 +198,8 @@ REPEAT .item
   EXTRACT .title text
 ```
 
+Inside `REPEAT`, `EXTRACT`, `SCAN` and `IF` only see the current element. `EXTRACT :scope attr:href` reads the element itself. `CLICK` and `TYPE` look in the current element first and fall back to the whole page. Nested `REPEAT` blocks resolve inside the outer element, and `LOOP` does not change scope.
+
 ### IF
 Conditional execution.
 

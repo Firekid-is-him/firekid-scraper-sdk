@@ -1,6 +1,8 @@
 import fs from 'fs'
 import path from 'path'
-import type { Page } from 'playwright'
+import type { ElementHandle, Locator, Page } from 'playwright'
+
+type DomHandle = ElementHandle<SVGElement | HTMLElement>
 import type { CmdFile, CmdStep } from '../types.js'
 import { logger, step, highlight } from '../logger/logger.js'
 import { config } from '../config.js'
@@ -25,6 +27,11 @@ export interface CommandExecutorOptions {
    * Called before GOTO, FETCH and DOWNLOAD. Throw to reject the URL.
    */
   validateUrl?: (url: string) => Promise<void> | void
+  /*
+   * How long CLICK, TYPE and PAGINATE wait for their selector, in ms.
+   * Defaults to 10000.
+   */
+  selectorTimeout?: number
 }
 
 export class CommandExecutor {
@@ -42,11 +49,14 @@ export class CommandExecutor {
   private cfManager: CloudflareManager
   private variables: Record<string, unknown> = this.result.variables
   private stepsRun = 0
+  private scope: Locator | null = null
+  private selectorTimeout: number
 
   constructor(page: Page, url: string, options: CommandExecutorOptions = {}) {
     this.page = page
     this.url = url
     this.options = options
+    this.selectorTimeout = options.selectorTimeout ?? 10000
     this.smartFetch = new SmartFetch({ validateUrl: options.validateUrl })
     this.smartFetch.setPageContext(page)
     this.cfManager = new CloudflareManager()
@@ -177,6 +187,34 @@ export class CommandExecutor {
     }
   }
 
+  /*
+   * Inside REPEAT the selector is looked up in the current element first and
+   * falls back to the whole page, so global controls still work.
+   */
+  private async actionTarget(selector: string): Promise<Locator> {
+    if (this.scope) {
+      const scoped = selector === ':scope' ? this.scope : this.scope.locator(selector)
+      if (await scoped.count() > 0) return scoped.first()
+    }
+
+    await this.page.waitForSelector(selector, { timeout: this.selectorTimeout })
+    return this.page.locator(selector).first()
+  }
+
+  /*
+   * Inside REPEAT, EXTRACT and SCAN only see the current element. Use
+   * :scope to read the element itself.
+   */
+  private async queryAll(selector: string): Promise<DomHandle[]> {
+    if (!this.scope) return await this.page.$$(selector)
+
+    if (selector === ':scope') {
+      return [await this.scope.elementHandle({ timeout: this.selectorTimeout }) as DomHandle]
+    }
+
+    return await this.scope.locator(selector).elementHandles() as DomHandle[]
+  }
+
   private async goto(args: string[]) {
     const url = args[0]
     if (!url) throw new Error('GOTO requires a URL')
@@ -189,8 +227,8 @@ export class CommandExecutor {
   private async click(args: string[]) {
     const selector = args[0]
     if (!selector) throw new Error('CLICK requires a selector')
-    await this.page.waitForSelector(selector, { timeout: 10000 })
-    await this.page.click(selector)
+    const target = await this.actionTarget(selector)
+    await target.click({ timeout: this.selectorTimeout })
   }
 
   private async type(args: string[]) {
@@ -198,8 +236,8 @@ export class CommandExecutor {
     const text = args.slice(1).join(' ')
     if (!selector) throw new Error('TYPE requires a selector')
     if (!text) throw new Error('TYPE requires text')
-    await this.page.waitForSelector(selector, { timeout: 10000 })
-    await this.page.fill(selector, text)
+    const target = await this.actionTarget(selector)
+    await target.fill(text, { timeout: this.selectorTimeout })
   }
 
   private async press(args: string[]) {
@@ -257,7 +295,7 @@ export class CommandExecutor {
     const selector = args[0]
     if (!selector) throw new Error('SCAN requires a selector')
 
-    const elements = await this.page.$$(selector)
+    const elements = await this.queryAll(selector)
     const found: Record<string, unknown>[] = []
 
     for (const el of elements) {
@@ -281,7 +319,7 @@ export class CommandExecutor {
     const attr = args[1] || 'text'
     if (!selector) throw new Error('EXTRACT requires a selector')
 
-    const elements = await this.page.$$(selector)
+    const elements = await this.queryAll(selector)
     const data: Array<string | null | undefined> = []
 
     for (const el of elements) {
@@ -325,7 +363,7 @@ export class CommandExecutor {
     let page = 1
     while (page < maxPages) {
       try {
-        await this.page.waitForSelector(selector, { timeout: 5000 })
+        await this.page.waitForSelector(selector, { timeout: this.selectorTimeout })
         logger.info(`Clicking next page (${page})`)
         await this.page.click(selector)
         await this.page.waitForLoadState('networkidle')
@@ -436,12 +474,19 @@ export class CommandExecutor {
     if (!selector) throw new Error('REPEAT requires a selector')
     if (!stepCmd.children?.length) throw new Error('REPEAT has no child commands')
 
-    const total = (await this.page.$$(selector)).length
+    const outer = this.scope
+    const container = outer ?? this.page
+    const total = await container.locator(selector).count()
     step(this.url, `REPEAT ${total}x over "${selector}"`, { mode: 'cmd', step: 'REPEAT' })
 
-    for (let i = 0; i < total; i++) {
-      step(this.url, `  REPEAT iteration ${i + 1}/${total}`, { mode: 'cmd' })
-      await this.runChildren(stepCmd, i + 1, total)
+    try {
+      for (let i = 0; i < total; i++) {
+        step(this.url, `  REPEAT iteration ${i + 1}/${total}`, { mode: 'cmd' })
+        this.scope = container.locator(selector).nth(i)
+        await this.runChildren(stepCmd, i + 1, total)
+      }
+    } finally {
+      this.scope = outer
     }
   }
 
@@ -450,7 +495,7 @@ export class CommandExecutor {
     if (!selector) throw new Error('IF requires a selector')
     if (!stepCmd.children?.length) throw new Error('IF has no child commands')
 
-    const exists = await this.page.locator(selector).count() > 0
+    const exists = await (this.scope ?? this.page).locator(selector).count() > 0
 
     if (exists) {
       for (const child of stepCmd.children) {

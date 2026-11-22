@@ -5,11 +5,17 @@ import { DownloaderMode } from './downloader.js'
 import { ScrapeMode } from './scrape.js'
 import { NavigatorMode } from './navigator.js'
 
+export interface AutoModeOptions {
+  validateUrl?: (url: string) => Promise<void> | void
+}
+
 export class AutoMode {
   private page: Page
+  private options: AutoModeOptions
 
-  constructor(page: Page) {
+  constructor(page: Page, options: AutoModeOptions = {}) {
     this.page = page
+    this.options = options
   }
 
   async execute(url: string): Promise<ScrapingResult> {
@@ -22,7 +28,7 @@ export class AutoMode {
 
     switch (mode) {
       case 'downloader':
-        const downloader = new DownloaderMode(this.page)
+        const downloader = new DownloaderMode(this.page, { validateUrl: this.options.validateUrl })
         result = await downloader.execute(url)
         break
 
@@ -50,7 +56,8 @@ export class AutoMode {
 
   private async detectBestMode(): Promise<Mode> {
     const indicators = await this.page.evaluate(() => {
-      const hasDownloadButton = !!document.querySelector('a[download], button:has-text("Download")')
+      const hasDownloadButton = !!document.querySelector('a[download]')
+        || Array.from(document.querySelectorAll('button, [role="button"]')).some(el => /download/i.test(el.textContent || ''))
       const hasVideoPlayer = !!document.querySelector('video, iframe[src*="youtube"], iframe[src*="vimeo"]')
       const hasFileLinks = !!document.querySelector('a[href$=".mp4"], a[href$=".pdf"], a[href$=".zip"]')
       

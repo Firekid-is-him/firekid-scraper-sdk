@@ -67,23 +67,26 @@ export class PaginatorMode {
   }
 
   private async extractPageData(itemSelector?: string): Promise<any[]> {
+    const explicit = Boolean(itemSelector)
     const selector = itemSelector || '[class*="item"], [class*="result"], [class*="product"]'
 
-    return await this.page.evaluate((sel) => {
+    return await this.page.evaluate(({ sel, keepAll }) => {
       const items = document.querySelectorAll(sel)
       const results: any[] = []
 
       for (const item of items) {
-        const title = item.querySelector('h1, h2, h3, h4, [class*="title"]')?.textContent?.trim()
-        const link = item.querySelector('a[href]')?.getAttribute('href')
+        const title = item.querySelector('h1, h2, h3, h4, [class*="title"]')?.textContent?.trim() || null
+        const link = item.querySelector('a[href]')?.getAttribute('href') ?? null
+        const image = item.querySelector('img[src]')?.getAttribute('src') ?? null
+        const text = (item.textContent || '').replace(/\s+/g, ' ').trim() || null
 
-        if (title) {
-          results.push({ title, link })
+        if (keepAll ? (title || link || text || image) : title) {
+          results.push({ title, text, link, image })
         }
       }
 
       return results
-    }, selector)
+    }, { sel: selector, keepAll: explicit })
   }
 
   private async clickNextPage(nextSelector?: string): Promise<boolean> {

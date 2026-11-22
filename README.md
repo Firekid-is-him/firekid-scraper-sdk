@@ -7,7 +7,7 @@ Advanced web scraping framework built on Playwright with anti-detection, selecto
 ## Features
 
 **Anti-detection**
-- Ghost fingerprinting spoofs canvas, WebGL, audio, fonts and navigator properties
+- Ghost fingerprinting spoofs canvas, WebGL, audio, fonts and navigator properties. The user agent, client hints, `navigator.userAgentData` and platform are built from the same identity and follow a custom `userAgent`. The browser engine is always Chromium, so a Firefox or Safari user agent still shows Chromium client hints
 - User agent, viewport and client hints are generated from the same fingerprint seed, so they always agree
 - Cloudflare detection with automatic handling and a manual fallback
 - Human-like typing, clicking and scrolling helpers
@@ -129,7 +129,7 @@ new FirekidScraper({
 | `useGhost` | `true` | Turns fingerprint spoofing on or off |
 | `browserArgs` | `[]` | Extra Chromium arguments |
 | `timeout` | `30000` | Navigation timeout in ms |
-| `selectorTimeout` | `5000` | How long extraction waits for each selector |
+| `selectorTimeout` | `5000` | How long extraction, `CLICK`, `TYPE` and `PAGINATE` wait for a selector (ms) |
 | `userAgent` | from fingerprint | Overrides the generated user agent |
 | `viewport` | from fingerprint | Overrides the generated viewport |
 | `proxy` | none | Also read from `PROXY_ENABLED` and `PROXY_URL` |
@@ -210,6 +210,8 @@ Inside `REPEAT` and `LOOP`, `{{index}}` is the current iteration (starting at 1)
 REPEAT .product
   EXTRACT .title text AS title_{{index}}
 ```
+
+Inside `REPEAT`, `EXTRACT`, `SCAN` and `IF` only look at the current element, so the example above returns one title per iteration. Use `:scope` to read the element itself (`EXTRACT :scope attr:href`). `CLICK` and `TYPE` look in the current element first and fall back to the whole page, so shared controls still work. Nested `REPEAT` blocks resolve inside the outer element. `LOOP` does not change scope.
 
 A step that fails is skipped and recorded in `errors`. `success` is `true` when at least one step succeeded.
 

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-22
+
+### Changed
+- `REPEAT` now scopes `EXTRACT`, `SCAN` and `IF` to the current element, so `REPEAT .product` with `EXTRACT .title` returns one title per iteration instead of every title each time. Use `:scope` to read the element itself. `CLICK` and `TYPE` look in the current element first and fall back to the whole page.
+- `DataExporter.toHTML` escapes the data and injects it into a custom template at `{{data}}`. A template without the placeholder is written as is.
+- `scrape()` adds `HTTP <status>` to `errors` for 4xx and 5xx responses, so `success` is `false` for them.
+- `paginate` and `infiniteScroll` return `{ title, text, link, image }` for every item matched by an explicit `itemSelector`.
+- `selectorTimeout` now applies to `CLICK`, `TYPE` and `PAGINATE` steps.
+
+### Fixed
+- **modes/auto**: `auto()` threw on every page because the download check used the Playwright-only `:has-text()` inside `document.querySelector`. The check now uses plain DOM logic. Auto mode also passes the `urlGuard` to the downloader it starts, which it did not before.
+- **ghost/webgl**: Any page that read `WEBGL_debug_renderer_info` hit `TypeError: Cannot create proxy with a non-object`, because the extension object has no `getParameter`. The extension proxy is gone and the prototype-level `getParameter` patch covers the vendor and renderer. Seeds now pair the vendor with a renderer of the same GPU family instead of picking them independently.
+- **ghost**: `navigator.userAgentData` exposed `HeadlessChrome` and the real engine version while the user agent and `sec-ch-ua` headers claimed another Chrome. The user agent now tracks the real browser version, and client hints, `userAgentData`, `navigator.platform` and the `sec-ch-ua*` headers are built from the effective user agent, including a custom one. `navigator.webdriver` is `false` instead of `undefined` and lives on the prototype, `navigator.plugins` is a real-looking `PluginArray`, `window.chrome` exists, and `permissions.query` no longer throws `Illegal invocation` for non-notification permissions.
+- **ghost/canvas**: Noise came from `Math.random()` on every read, so the same canvas gave a different result each time, and `toDataURL` could throw on empty or tainted canvases. Noise is now derived from the seed, applied to a copy, and falls back to the native result on error. Patched functions report `[native code]` through `Function.prototype.toString`.
+- **output/exporter**: `toCSV` did not escape quotes or newlines, did not neutralise formula cells and only used the first row's keys. `toHTML` wrote scraped data unescaped and ignored the data when a template was given (templates can now use `{{data}}`). `toMarkdown` did not escape `|` or newlines and dropped `0` and `false`.
+- **paginator / infinite-scroll**: With an explicit `itemSelector`, items without a heading or title child were dropped silently. Every matched item is now returned as `{ title, text, link, image }`.
+- **cmd-executor**: `EXTRACT`, `SCAN` and `IF` inside `REPEAT` ignored the current element and matched the whole page. They now resolve inside it, `CLICK` and `TYPE` try it first, and `:scope` selects the element itself. `selectorTimeout` is now honoured by `CLICK`, `TYPE` and `PAGINATE` instead of a fixed 10 and 5 seconds.
+- **core/scraper**: Parallel calls on one instance aborted each other. Calls that drive the page now run one after another, and `close()` waits for them. `scrape()` reports HTTP error statuses in `errors` and validates `options.selectors`. `loadPlugin()` throws when the file is missing or invalid.
+- **server**: Invalid JSON, oversized bodies and unknown routes returned Express's default HTML page with a stack trace. They now return JSON 400, 413 and 404.
+
+## [1.1.0]
+
 ### Breaking
 - Node.js 20 or newer is required.
 - The API server refuses to start without `API_KEY` and binds to `127.0.0.1` by default. Set `API_HOST=0.0.0.0` to listen on all interfaces.

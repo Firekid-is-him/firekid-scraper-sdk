@@ -1,59 +1,27 @@
 import type { BrowserContext } from 'playwright'
 import type { Seed } from '../types.js'
+import { injectWithMask, type Mask } from './mask.js'
 
 export async function applyWebGLSpoof(context: BrowserContext, seed: Seed): Promise<void> {
-  await context.addInitScript((params: { vendor: string, renderer: string }) => {
-    const { vendor, renderer } = params
-    const getParameterProxyHandler = {
-      apply(target: any, thisArg: any, args: any[]) {
-        const param = args[0]
-        
-        if (param === 37445) {
-          return vendor
+  await context.addInitScript(injectWithMask(({ vendor, renderer }: { vendor: string, renderer: string }, mask: Mask) => {
+    const patch = (proto: any) => {
+      if (!proto || typeof proto.getParameter !== 'function') return
+
+      const original = proto.getParameter
+
+      const methods = {
+        getParameter(this: any, ...args: any[]) {
+          const param = args[0]
+          if (param === 37445) return vendor
+          if (param === 37446) return renderer
+          return original.apply(this, args)
         }
-        if (param === 37446) {
-          return renderer
-        }
-        
-        return Reflect.apply(target, thisArg, args)
       }
+
+      proto.getParameter = mask(methods.getParameter, 'getParameter', 1)
     }
 
-    const getExtensionProxyHandler = {
-      apply(target: any, thisArg: any, args: any[]) {
-        const result: any = Reflect.apply(target, thisArg, args)
-        
-        if (!result) {
-          return result
-        }
-
-        if (args[0] === 'WEBGL_debug_renderer_info') {
-          const getParameterProxy = new Proxy(result.getParameter, getParameterProxyHandler)
-          result.getParameter = getParameterProxy
-        }
-
-        return result
-      }
-    }
-
-    WebGLRenderingContext.prototype.getParameter = new Proxy(
-      WebGLRenderingContext.prototype.getParameter,
-      getParameterProxyHandler
-    )
-
-    WebGL2RenderingContext.prototype.getParameter = new Proxy(
-      WebGL2RenderingContext.prototype.getParameter,
-      getParameterProxyHandler
-    )
-
-    WebGLRenderingContext.prototype.getExtension = new Proxy(
-      WebGLRenderingContext.prototype.getExtension,
-      getExtensionProxyHandler
-    )
-
-    WebGL2RenderingContext.prototype.getExtension = new Proxy(
-      WebGL2RenderingContext.prototype.getExtension,
-      getExtensionProxyHandler
-    )
-  }, { vendor: seed.webglVendor, renderer: seed.webglRenderer })
+    patch((window as any).WebGLRenderingContext?.prototype)
+    patch((window as any).WebGL2RenderingContext?.prototype)
+  }, { vendor: seed.webglVendor, renderer: seed.webglRenderer }))
 }

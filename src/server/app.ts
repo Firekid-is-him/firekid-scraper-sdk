@@ -198,6 +198,30 @@ export function createApp(): express.Express {
     }
   })
 
+  app.use((req: Request, res: Response) => {
+    res.status(404).json({ error: 'Not found' })
+  })
+
+  app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+    if (res.headersSent) {
+      next(err)
+      return
+    }
+
+    if (err?.type === 'entity.too.large') {
+      res.status(413).json({ error: 'Request body too large' })
+      return
+    }
+
+    if (err?.type === 'entity.parse.failed') {
+      res.status(400).json({ error: 'Request body must be valid JSON' })
+      return
+    }
+
+    logger.error('[api] Unhandled error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  })
+
   return app
 }
 

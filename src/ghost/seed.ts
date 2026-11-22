@@ -21,17 +21,19 @@ const resolutions = [
 const languages = ['en-US', 'en-GB', 'en', 'es-ES', 'fr-FR', 'de-DE']
 const timezones = ['America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Paris']
 
-const webglVendors = [
-  'Google Inc. (NVIDIA)',
-  'Google Inc. (Intel)',
-  'Google Inc. (AMD)',
-  'Google Inc. (Apple)'
-]
-
-const webglRenderers = [
-  'ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0, D3D11)',
-  'ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)',
-  'ANGLE (AMD, AMD Radeon RX 580 Direct3D11 vs_5_0 ps_5_0, D3D11)'
+const webglProfiles = [
+  {
+    vendor: 'Google Inc. (NVIDIA)',
+    renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0, D3D11)'
+  },
+  {
+    vendor: 'Google Inc. (Intel)',
+    renderer: 'ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)'
+  },
+  {
+    vendor: 'Google Inc. (AMD)',
+    renderer: 'ANGLE (AMD, AMD Radeon RX 580 Direct3D11 vs_5_0 ps_5_0, D3D11)'
+  }
 ]
 
 const fontSets = [
@@ -50,7 +52,8 @@ function randomRange(min: number, max: number): number {
 
 export function getNewSeed(): Seed {
   const resolution = random(resolutions)
-  
+  const webgl = random(webglProfiles)
+
   return {
     id: crypto.randomUUID(),
     chromeVersion: random(chromeVersions),
@@ -59,8 +62,8 @@ export function getNewSeed(): Seed {
     language: random(languages),
     timezone: random(timezones),
     canvasNoise: randomRange(0.0001, 0.001),
-    webglVendor: random(webglVendors),
-    webglRenderer: random(webglRenderers),
+    webglVendor: webgl.vendor,
+    webglRenderer: webgl.renderer,
     audioNoise: randomRange(0.00001, 0.0001),
     fonts: random(fontSets)
   }
@@ -69,6 +72,11 @@ export function getNewSeed(): Seed {
 export function buildUserAgent(seed: Seed): string {
   const major = seed.chromeVersion.split('.')[0]
   return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`
+}
+
+export function alignSeedToBrowser(seed: Seed, browserVersion: string): Seed {
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(browserVersion)) return seed
+  return { ...seed, chromeVersion: browserVersion }
 }
 
 export function buildViewport(seed: Seed): { width: number; height: number } {

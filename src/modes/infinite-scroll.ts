@@ -77,24 +77,26 @@ export class InfiniteScrollMode {
   }
 
   private async extractAllContent(itemSelector?: string): Promise<any[]> {
+    const explicit = Boolean(itemSelector)
     const selector = itemSelector || '[class*="item"], [class*="post"], [class*="card"]'
 
-    return await this.page.evaluate((sel) => {
+    return await this.page.evaluate(({ sel, keepAll }) => {
       const items = document.querySelectorAll(sel)
       const results: any[] = []
 
       for (const item of items) {
-        const title = item.querySelector('h1, h2, h3, h4')?.textContent?.trim()
-        const link = item.querySelector('a[href]')?.getAttribute('href')
-        const image = item.querySelector('img[src]')?.getAttribute('src')
+        const title = item.querySelector('h1, h2, h3, h4')?.textContent?.trim() || null
+        const link = item.querySelector('a[href]')?.getAttribute('href') ?? null
+        const image = item.querySelector('img[src]')?.getAttribute('src') ?? null
+        const text = (item.textContent || '').replace(/\s+/g, ' ').trim() || null
 
-        if (title || link) {
-          results.push({ title, link, image })
+        if (keepAll ? (title || link || text || image) : (title || link)) {
+          results.push({ title, text, link, image })
         }
       }
 
       return results
-    }, selector)
+    }, { sel: selector, keepAll: explicit })
   }
 
   async detectScrollTrigger(): Promise<string | null> {
