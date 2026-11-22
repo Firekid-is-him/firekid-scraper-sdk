@@ -21,11 +21,12 @@ program
 
 program
   .option('-u, --url <url>', 'URL to scrape')
-  .option('-m, --mode <mode>', 'Scraping mode (auto, downloader, scrape, navigator)')
+  .option('-m, --mode <mode>', 'Scraping mode (auto, downloader, scrape, navigator, ssr, api-hunter)')
   .option('--cmd <file>', 'Run command file')
   .option('--record', 'Record browser actions')
   .option('--auto', 'Use intelligent auto mode')
-  .option('--headless', 'Run in headless mode')
+  .option('--headless', 'Run in headless mode (default)')
+  .option('--headed', 'Show the browser window')
   .option('--server', 'Start API server')
   .option('-p, --port <port>', 'API server port', '3000')
 
@@ -43,9 +44,17 @@ async function main() {
   }
 
   const scraper = new FirekidScraper({
-    headless: options.headless !== false
+    headless: !options.headed
   })
 
+  try {
+    await run(scraper)
+  } finally {
+    await scraper.close()
+  }
+}
+
+async function run(scraper: FirekidScraper) {
   if (options.record) {
     const url = options.url || await text({
       message: 'Enter URL to record:',
@@ -67,9 +76,22 @@ async function main() {
     const s = spinner()
     s.start(`Running command file: ${options.cmd}`)
 
-    await scraper.runCommandFile(options.cmd)
+    const result = await scraper.runCommandFile(options.cmd)
 
     s.stop('Execution complete!')
+    console.log('\nResults:', result)
+    outro('Done')
+    return
+  }
+
+  if (options.mode && options.url) {
+    const s = spinner()
+    s.start(`Running ${options.mode} mode...`)
+
+    const result = await scraper.runMode(options.url, options.mode)
+
+    s.stop('Scraping complete!')
+    console.log('\nResults:', result)
     outro('Done')
     return
   }
@@ -128,7 +150,8 @@ async function main() {
       placeholder: 'commands/mysite.cmd'
     })
 
-    await scraper.runCommandFile(file as string)
+    const result = await scraper.runCommandFile(file as string)
+    console.log('\nResults:', result)
   } else if (action === 'server') {
     const port = await text({
       message: 'Enter port:',

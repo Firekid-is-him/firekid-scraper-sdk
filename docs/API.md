@@ -252,10 +252,15 @@ interface ScrapingResult {
 interface FirekidConfig {
   headless?: boolean
   bypassCloudflare?: boolean
-  maxWorkers?: number
+  useGhost?: boolean
+  browserArgs?: string[]
   timeout?: number
-  dataDir?: string
-  logLevel?: 'error' | 'warn' | 'info' | 'debug'
+  selectorTimeout?: number
+  userAgent?: string
+  viewport?: { width: number; height: number }
+  proxy?: string
+  rateLimit?: { enabled?: boolean; max?: number; window?: number }
+  urlGuard?: (url: string) => Promise<void> | void
 }
 ```
 
@@ -280,33 +285,37 @@ interface FetchOptions {
 ### Start Server
 
 ```javascript
-import { startServer } from '@firekid/scraper/server'
+import { startServer } from '@firekid/scraper'
 
-await startServer(3000)
+await startServer(3000, '127.0.0.1')
 ```
+
+`API_KEY` must be set or `startServer` throws. The default host is `127.0.0.1`. From the command line use `firekid-scraper --server --port 3000`.
+
+Every route except `/health` requires an `x-api-key` header. A missing or wrong key returns `401`. Targets on loopback, private and link-local networks are rejected with `400`, including when reached through a redirect. At most `API_MAX_CONCURRENT` jobs run at once and extra requests receive `429`.
 
 ### Endpoints
 
 #### POST /scrape
 
-Scrape a URL.
+Scrape a URL. `mode` is `auto` (default) or `extract`, which also needs a `selectors` object of field name to CSS selector.
 
 ```bash
 curl -X POST http://localhost:3000/scrape \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: your-key" \
+  -H "x-api-key: your-key" \
   -d '{"url": "https://example.com", "mode": "auto"}'
 ```
 
 #### POST /command
 
-Run a command file.
+Run a command file. `filePath` is resolved inside `API_COMMAND_DIR` (default `./commands`) and must end in `.cmd`. Paths that leave that folder, including through symlinks, are refused. Files the script writes with `SCREENSHOT`, `DOWNLOAD` or `UPLOAD` must stay inside `API_OUTPUT_DIR` (default `./output`).
 
 ```bash
 curl -X POST http://localhost:3000/command \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: your-key" \
-  -d '{"filePath": "./commands/mysite.cmd"}'
+  -H "x-api-key: your-key" \
+  -d '{"filePath": "mysite.cmd"}'
 ```
 
 #### GET /health

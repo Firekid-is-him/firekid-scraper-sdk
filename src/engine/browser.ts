@@ -1,6 +1,8 @@
 import { chromium, type Browser, type BrowserContext } from 'playwright'
 import { applyGhost } from '../ghost/index.js'
+import { getNewSeed, buildUserAgent, buildViewport } from '../ghost/seed.js'
 import { logger } from '../logger/logger.js'
+import { config } from '../config.js'
 import type { Seed } from '../types.js'
 
 export class BrowserManager {
@@ -14,14 +16,10 @@ export class BrowserManager {
 
     logger.info(`[browser-manager] Launching browser: ${id}`)
 
-    const browser = await chromium.launch({
-      headless,
-      args: [
-        '--disable-blink-features=AutomationControlled',
-        '--no-sandbox',
-        '--disable-dev-shm-usage'
-      ]
-    })
+    const args = ['--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage']
+    if (config.browser.noSandbox) args.push('--no-sandbox')
+
+    const browser = await chromium.launch({ headless, args })
 
     this.browsers.set(id, browser)
     return browser
@@ -34,12 +32,14 @@ export class BrowserManager {
       throw new Error(`Browser ${browserId} not found`)
     }
 
+    const identity = seed ?? getNewSeed()
+
     const context = await browser.newContext({
-      viewport: { width: 1920, height: 1080 },
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      viewport: buildViewport(identity),
+      userAgent: buildUserAgent(identity)
     })
 
-    await applyGhost(context, { seed })
+    await applyGhost(context, { seed: identity })
 
     const contextId = `${browserId}-context-${Date.now()}`
     this.contexts.set(contextId, context)

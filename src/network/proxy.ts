@@ -25,8 +25,8 @@ export class ProxyManager {
       
       return {
         server: `${url.protocol}//${url.host}`,
-        username: url.username || undefined,
-        password: url.password || undefined
+        username: url.username ? decodeURIComponent(url.username) : undefined,
+        password: url.password ? decodeURIComponent(url.password) : undefined
       }
     } catch (err) {
       throw new Error(`Invalid proxy URL: ${proxyUrl}`)

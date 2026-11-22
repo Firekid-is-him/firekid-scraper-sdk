@@ -1,93 +1,232 @@
-import express from 'express'
+import crypto from 'crypto'
+import fs from 'fs'
+import http from 'http'
+import path from 'path'
+import express, { type Request, type Response, type NextFunction } from 'express'
 import { rateLimit } from 'express-rate-limit'
 import { FirekidScraper } from '../core/scraper.js'
 import { logger } from '../logger/logger.js'
 import { config } from '../config.js'
+import { assertPublicUrl } from './url-guard.js'
 
-const app = express()
+const MAX_SELECTORS = 50
+const MAX_SELECTOR_LENGTH = 500
 
-app.use(express.json())
-
-const limiter = rateLimit({
-  windowMs: config.rateLimit.window,
-  max: config.rateLimit.max,
-  message: 'Too many requests, please try again later'
-})
-
-if (config.rateLimit.enabled) {
-  app.use(limiter)
+function safeEqual(a: string, b: string): boolean {
+  const left = crypto.createHash('sha256').update(a).digest()
+  const right = crypto.createHash('sha256').update(b).digest()
+  return crypto.timingSafeEqual(left, right)
 }
 
-app.use((req, res, next) => {
-  const apiKey = req.headers['x-api-key']
-  
-  if (config.server.apiKey && apiKey !== config.server.apiKey) {
-    return res.status(401).json({ error: 'Invalid API key' })
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Request timed out')), ms)
+
+    promise.then(
+      value => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      err => {
+        clearTimeout(timer)
+        reject(err)
+      }
+    )
+  })
+}
+
+function parseSelectors(value: unknown): Record<string, string> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+
+  const entries = Object.entries(value as Record<string, unknown>)
+  if (entries.length === 0 || entries.length > MAX_SELECTORS) return null
+
+  const selectors: Record<string, string> = {}
+
+  for (const [key, selector] of entries) {
+    if (typeof selector !== 'string' || selector.length === 0 || selector.length > MAX_SELECTOR_LENGTH) {
+      return null
+    }
+    selectors[key] = selector
   }
-  
-  next()
-})
 
-app.post('/scrape', async (req, res) => {
-  const { url, mode = 'auto', selectors } = req.body
+  return selectors
+}
 
-  if (!url) {
-    return res.status(400).json({ error: 'URL is required' })
+export function createApp(): express.Express {
+  const app = express()
+  let active = 0
+
+  app.disable('x-powered-by')
+
+  app.get('/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: Date.now() })
+  })
+
+  if (config.rateLimit.enabled) {
+    app.use(rateLimit({
+      windowMs: config.rateLimit.window,
+      limit: config.rateLimit.max,
+      standardHeaders: 'draft-7',
+      legacyHeaders: false,
+      message: { error: 'Too many requests, please try again later' }
+    }))
   }
 
-  const scraper = new FirekidScraper()
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const provided = req.headers['x-api-key']
 
-  try {
-    let result
-
-    if (mode === 'auto') {
-      result = await scraper.auto(url)
-    } else if (mode === 'extract' && selectors) {
-      result = await scraper.extract(url, selectors)
-    } else {
-      return res.status(400).json({ error: 'Invalid mode or missing parameters' })
+    if (typeof provided !== 'string' || !safeEqual(provided, config.server.apiKey)) {
+      res.status(401).json({ error: 'Invalid API key' })
+      return
     }
 
-    await scraper.close()
-
-    res.json({ success: true, result })
-  } catch (err: any) {
-    await scraper.close()
-    logger.error('[api] Scraping error:', err)
-    res.status(500).json({ error: err.message })
-  }
-})
-
-app.post('/command', async (req, res) => {
-  const { filePath } = req.body
-
-  if (!filePath) {
-    return res.status(400).json({ error: 'File path is required' })
-  }
-
-  const scraper = new FirekidScraper()
-
-  try {
-    const result = await scraper.runCommandFile(filePath)
-    await scraper.close()
-
-    res.json({ success: true, result })
-  } catch (err: any) {
-    await scraper.close()
-    logger.error('[api] Command execution error:', err)
-    res.status(500).json({ error: err.message })
-  }
-})
-
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: Date.now() })
-})
-
-export async function startServer(port: number = 3000): Promise<void> {
-  app.listen(port, () => {
-    logger.info(`[server] Firekid API server running on port ${port}`)
-    console.log(`\nFirekid Scraper API Server`)
-    console.log(`Port: ${port}`)
-    console.log(`Health: http://localhost:${port}/health\n`)
+    next()
   })
+
+  app.use(express.json({ limit: '100kb' }))
+
+  const acquireSlot = (req: Request, res: Response, next: NextFunction) => {
+    if (active >= config.server.maxConcurrent) {
+      res.status(429).json({ error: 'Server is busy, try again shortly' })
+      return
+    }
+
+    active++
+    let released = false
+
+    res.on('close', () => {
+      if (released) return
+      released = true
+      active--
+    })
+
+    next()
+  }
+
+  app.post('/scrape', acquireSlot, async (req: Request, res: Response) => {
+    const { url, mode = 'auto', selectors } = req.body ?? {}
+
+    if (typeof url !== 'string' || !url) {
+      res.status(400).json({ error: 'URL is required' })
+      return
+    }
+
+    if (mode !== 'auto' && mode !== 'extract') {
+      res.status(400).json({ error: 'Mode must be "auto" or "extract"' })
+      return
+    }
+
+    const parsedSelectors = mode === 'extract' ? parseSelectors(selectors) : null
+
+    if (mode === 'extract' && !parsedSelectors) {
+      res.status(400).json({ error: 'Extract mode needs a selectors object of strings' })
+      return
+    }
+
+    try {
+      await assertPublicUrl(url)
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message })
+      return
+    }
+
+    const scraper = new FirekidScraper({ urlGuard: assertPublicUrl })
+
+    try {
+      const work = mode === 'auto'
+        ? scraper.auto(url)
+        : scraper.extract(url, parsedSelectors as Record<string, string>)
+
+      const result = await withTimeout(work, config.server.requestTimeout)
+
+      res.json({ success: true, result })
+    } catch (err: any) {
+      logger.error('[api] Scraping error:', err)
+      res.status(500).json({ error: 'Scraping failed' })
+    } finally {
+      await scraper.close()
+    }
+  })
+
+  app.post('/command', acquireSlot, async (req: Request, res: Response) => {
+    const { filePath } = req.body ?? {}
+
+    if (typeof filePath !== 'string' || !filePath) {
+      res.status(400).json({ error: 'File path is required' })
+      return
+    }
+
+    const baseDir = path.resolve(config.server.commandDir)
+    const requested = path.resolve(baseDir, filePath)
+
+    if (path.extname(requested) !== '.cmd') {
+      res.status(400).json({ error: 'Only .cmd files can be run' })
+      return
+    }
+
+    let resolved: string
+
+    try {
+      const realBase = fs.realpathSync(baseDir)
+      resolved = fs.realpathSync(requested)
+
+      const relative = path.relative(realBase, resolved)
+      if (relative.startsWith('..') || path.isAbsolute(relative)) {
+        res.status(400).json({ error: 'File must be inside the commands directory' })
+        return
+      }
+    } catch {
+      res.status(404).json({ error: 'Command file not found' })
+      return
+    }
+
+    const scraper = new FirekidScraper({ urlGuard: assertPublicUrl })
+
+    try {
+      const result = await withTimeout(
+        scraper.runCommandFile(resolved, { workDir: path.resolve(config.server.outputDir) }),
+        config.server.requestTimeout
+      )
+
+      res.json({ success: true, result })
+    } catch (err: any) {
+      logger.error('[api] Command execution error:', err)
+      res.status(500).json({ error: 'Command execution failed' })
+    } finally {
+      await scraper.close()
+    }
+  })
+
+  return app
+}
+
+export async function startServer(
+  port: number = config.server.port,
+  host: string = config.server.host
+): Promise<http.Server> {
+  if (!config.server.apiKey) {
+    throw new Error('API_KEY must be set before the API server can start')
+  }
+
+  const app = createApp()
+
+  const server = await new Promise<http.Server>((resolve, reject) => {
+    const instance = app.listen(port, host, () => resolve(instance))
+    instance.once('error', reject)
+  })
+
+  logger.info(`[server] Firekid API server running on ${host}:${port}`)
+  console.log(`\nFirekid Scraper API Server`)
+  console.log(`Listening: ${host}:${port}`)
+  console.log(`Health: http://${host}:${port}/health\n`)
+
+  const shutdown = () => {
+    server.close(() => process.exit(0))
+  }
+
+  process.once('SIGTERM', shutdown)
+  process.once('SIGINT', shutdown)
+
+  return server
 }

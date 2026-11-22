@@ -6,34 +6,44 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     strategy:
       matrix:
-        node-version: [18.x, 20.x]
-    
+        node-version: [20.x, 22.x]
+
+    env:
+      NO_SANDBOX: 'true'
+      HEADLESS: 'true'
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-      
+          cache: npm
+
       - name: Install dependencies
-        run: npm install
-      
+        run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
       - name: Install Playwright
-        run: npx playwright install chromium
-      
+        run: npx playwright install --with-deps chromium
+
       - name: Run linter
         run: npm run lint
-      
+
       - name: Build
         run: npm run build
-      
+
       - name: Run tests
         run: npm test

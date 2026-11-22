@@ -3,10 +3,42 @@ import type { Page, BrowserContext, Browser } from 'playwright'
 export interface FirekidConfig {
   headless?: boolean
   bypassCloudflare?: boolean
+  useGhost?: boolean
+  browserArgs?: string[]
   maxWorkers?: number
   timeout?: number
+  selectorTimeout?: number
   dataDir?: string
   logLevel?: 'error' | 'warn' | 'info' | 'debug'
+  userAgent?: string
+  viewport?: { width: number; height: number }
+  proxy?: string
+  rateLimit?: {
+    enabled?: boolean
+    max?: number
+    window?: number
+  }
+  urlGuard?: (url: string) => Promise<void> | void
+}
+
+export interface ScrapeOptions {
+  selectors: Record<string, string>
+  attribute?: string
+  multiple?: boolean
+  screenshot?: boolean | string
+}
+
+export interface PaginateOptions {
+  maxPages?: number
+  waitBetween?: number
+  nextSelector?: string
+  itemSelector?: string
+}
+
+export interface InfiniteScrollOptions {
+  maxScrolls?: number
+  itemSelector?: string
+  scrollDelay?: number
 }
 
 export interface ScrapingResult {

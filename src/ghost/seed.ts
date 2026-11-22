@@ -66,6 +66,18 @@ export function getNewSeed(): Seed {
   }
 }
 
+export function buildUserAgent(seed: Seed): string {
+  const major = seed.chromeVersion.split('.')[0]
+  return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`
+}
+
+export function buildViewport(seed: Seed): { width: number; height: number } {
+  return {
+    width: seed.screenWidth,
+    height: Math.max(600, seed.screenHeight - 120)
+  }
+}
+
 export function getSeedForSite(siteHost: string): Seed {
   if (seedCache.has(siteHost)) {
     return seedCache.get(siteHost)!

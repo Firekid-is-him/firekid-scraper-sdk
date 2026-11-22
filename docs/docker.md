@@ -7,18 +7,15 @@ Run Firekid Scraper in Docker containers.
 ### Build and Run
 
 ```bash
-docker-compose up -d
+API_KEY=$(openssl rand -hex 32) docker compose up -d --build
 ```
 
-This starts:
-- Main scraper API server on port 3000
-- WebSocket server on port 8080
-- 2 worker containers for distributed scraping
+This starts the API server on port 3000, published on `127.0.0.1` only. `API_KEY` is required: the server refuses to start without it. Calls to every route except `/health` need an `x-api-key` header carrying that key.
 
 ### Stop
 
 ```bash
-docker-compose down
+docker compose down
 ```
 
 ## Single Container
@@ -34,8 +31,8 @@ docker build -t firekid-scraper .
 ```bash
 docker run -d \
   --name firekid \
-  -p 3000:3000 \
-  -p 8080:8080 \
+  -p 127.0.0.1:3000:3000 \
+  -e API_KEY="$(openssl rand -hex 32)" \
   -e HEADLESS=true \
   -e CF_BYPASS=auto \
   -v $(pwd)/data:/app/data \
@@ -100,11 +97,9 @@ services:
       - CF_BYPASS=manual
 ```
 
-### Scale Workers
+### Concurrency
 
-```bash
-docker-compose up -d --scale firekid-worker-1=5
-```
+`MAX_QUEUE_WORKERS` sets the worker pool size and `API_MAX_CONCURRENT` caps how many API jobs run at once. To handle more load, raise those values or run several containers behind a load balancer.
 
 ### View Logs
 
@@ -124,13 +119,25 @@ docker-compose restart
 
 ```bash
 curl http://localhost:3000/health
+curl -X POST http://localhost:3000/scrape \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: $API_KEY" \
+  -d '{"url": "https://example.com", "mode": "auto"}'
 ```
 
 ### From Another Container
 
+Publish the port on a shared network instead of `0.0.0.0`:
+
 ```bash
 curl http://firekid-scraper:3000/health
 ```
+
+### Notes
+
+The image sets `NO_SANDBOX=true` and `API_HOST=0.0.0.0` because the container is the isolation boundary and the port mapping controls exposure. Outside Docker, leave both at their defaults.
+
+The container runs as the `node` user. Mounted folders must be writable by it.
 
 ## Custom Dockerfile
 

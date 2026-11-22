@@ -1,44 +1,44 @@
-FROM node:20-slim
-
-RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
-    ca-certificates \
-    fonts-liberation \
-    libappindicator3-1 \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcups2 \
-    libdbus-1-3 \
-    libgdk-pixbuf2.0-0 \
-    libnspr4 \
-    libnss3 \
-    libx11-xcb1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    xdg-utils \
-    && rm -rf /var/lib/apt/lists/*
+FROM node:20-slim AS build
 
 WORKDIR /app
 
-COPY package*.json ./
+COPY package.json package-lock.json ./
+RUN npm ci
 
-RUN npm ci --only=production
-
-COPY . .
-
+COPY tsconfig.json tsup.config.ts ./
+COPY src ./src
+COPY bin ./bin
 RUN npm run build
 
-RUN npx playwright install chromium
-RUN npx playwright install-deps chromium
+FROM node:20-slim
 
-RUN node scripts/prestart.js
+WORKDIR /app
 
 ENV NODE_ENV=production
 ENV HEADLESS=true
+ENV NO_SANDBOX=true
+ENV API_HOST=0.0.0.0
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-EXPOSE 3000 8080
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev \
+    && npx playwright install --with-deps chromium \
+    && chmod -R a+rX /ms-playwright \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /app/dist ./dist
+COPY scripts ./scripts
+COPY plugins ./plugins
+COPY .env.example ./
+
+RUN node scripts/prestart.js \
+    && chown -R node:node /app
+
+USER node
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD node -e "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 CMD ["node", "dist/bin/firekid-scraper.js", "--server", "--port", "3000"]

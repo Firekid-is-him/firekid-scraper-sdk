@@ -14,9 +14,10 @@ export async function applyGhost(
   context: BrowserContext,
   options: GhostOptions = {}
 ): Promise<HumanBehavior> {
-  const seed = options.fresh || !options.siteHost
-    ? getNewSeed()
-    : getSeedForSite(options.siteHost)
+  const seed = options.seed
+    ?? (options.fresh || !options.siteHost
+      ? getNewSeed()
+      : getSeedForSite(options.siteHost))
 
   validateConsistency(seed)
 
@@ -40,5 +41,5 @@ export async function applyGhost(
   return new HumanBehavior(seed)
 }
 
-export { getSeedForSite, getNewSeed } from './seed.js'
+export { getSeedForSite, getNewSeed, buildUserAgent, buildViewport } from './seed.js'
 export { HumanBehavior } from './behavior.js'

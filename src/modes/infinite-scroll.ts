@@ -1,5 +1,5 @@
 import type { Page } from 'playwright'
-import type { ScrapingResult } from '../types.js'
+import type { ScrapingResult, InfiniteScrollOptions } from '../types.js'
 import { logger } from '../logger/logger.js'
 
 export class InfiniteScrollMode {
@@ -9,13 +9,15 @@ export class InfiniteScrollMode {
     this.page = page
   }
 
-  async execute(url: string, maxScrolls: number = 50): Promise<ScrapingResult> {
+  async execute(url: string, input: number | InfiniteScrollOptions = {}): Promise<ScrapingResult> {
+    const options: InfiniteScrollOptions = typeof input === 'number' ? { maxScrolls: input } : input
+
     logger.info('[infinite-scroll] Starting infinite scroll scraping...')
 
     try {
-      const scrollCount = await this.scrollToBottom(maxScrolls)
+      const scrollCount = await this.scrollToBottom(options.maxScrolls ?? 50, options.scrollDelay ?? 1000)
 
-      const data = await this.extractAllContent()
+      const data = await this.extractAllContent(options.itemSelector)
 
       return {
         success: true,
@@ -36,7 +38,7 @@ export class InfiniteScrollMode {
     }
   }
 
-  private async scrollToBottom(maxScrolls: number): Promise<number> {
+  private async scrollToBottom(maxScrolls: number, scrollDelay: number): Promise<number> {
     let previousHeight = 0
     let scrollCount = 0
     let noChangeCount = 0
@@ -58,7 +60,7 @@ export class InfiniteScrollMode {
         window.scrollTo(0, document.body.scrollHeight)
       })
 
-      await this.page.waitForTimeout(1000)
+      await this.page.waitForTimeout(scrollDelay)
 
       const loadingIndicator = await this.page.locator('[class*="loading"], [class*="spinner"]').count()
       if (loadingIndicator > 0) {
@@ -74,9 +76,11 @@ export class InfiniteScrollMode {
     return scrollCount
   }
 
-  private async extractAllContent(): Promise<any[]> {
-    return await this.page.evaluate(() => {
-      const items = document.querySelectorAll('[class*="item"], [class*="post"], [class*="card"]')
+  private async extractAllContent(itemSelector?: string): Promise<any[]> {
+    const selector = itemSelector || '[class*="item"], [class*="post"], [class*="card"]'
+
+    return await this.page.evaluate((sel) => {
+      const items = document.querySelectorAll(sel)
       const results: any[] = []
 
       for (const item of items) {
@@ -90,7 +94,7 @@ export class InfiniteScrollMode {
       }
 
       return results
-    })
+    }, selector)
   }
 
   async detectScrollTrigger(): Promise<string | null> {

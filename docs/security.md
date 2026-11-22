@@ -74,21 +74,44 @@ Prevent abuse and respect server limits.
 
 ## Authentication
 
-### Secure API Endpoints
+### Built-in API Protections
+
+The bundled server (`--server` or `startServer`) already does the following:
+
+- Refuses to start unless `API_KEY` is set
+- Compares keys in constant time
+- Binds to `127.0.0.1` unless `API_HOST` says otherwise
+- Rejects loopback, private, link-local and metadata addresses as scrape targets, and re-checks every redirect
+- Reads command files only from `API_COMMAND_DIR` and writes only inside `API_OUTPUT_DIR`
+- Limits concurrent jobs, job duration and request body size
+
+Set `API_ALLOW_PRIVATE_URLS=true` only if you really need to scrape internal hosts.
+
+### Your Own Endpoints
+
+If you build your own server around the library, check keys in constant time and guard scrape targets:
 
 ```javascript
+import crypto from 'crypto'
+
+const sha = (value) => crypto.createHash('sha256').update(value).digest()
+
 app.use((req, res, next) => {
-  const apiKey = req.headers['x-api-key']
-  
-  if (apiKey !== process.env.API_KEY) {
+  const provided = String(req.headers['x-api-key'] ?? '')
+
+  if (!crypto.timingSafeEqual(sha(provided), sha(process.env.API_KEY))) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
-  
+
   next()
 })
 ```
 
+Pass a `urlGuard` to `FirekidScraper` so user supplied URLs cannot reach internal services.
+
 ### Use JWT Tokens
+
+JWT and password hashing are not bundled. Install the libraries you need in your own application:
 
 ```javascript
 import jwt from 'jsonwebtoken'
@@ -105,6 +128,8 @@ import bcrypt from 'bcrypt'
 
 const hashed = await bcrypt.hash(password, 10)
 ```
+
+`bcrypt` is not a dependency of this package, so add it to your own project first.
 
 ### Secure Database Connections
 

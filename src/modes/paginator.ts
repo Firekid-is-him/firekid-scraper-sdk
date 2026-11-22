@@ -1,5 +1,5 @@
 import type { Page } from 'playwright'
-import type { ScrapingResult } from '../types.js'
+import type { ScrapingResult, PaginateOptions } from '../types.js'
 import { logger } from '../logger/logger.js'
 
 export class PaginatorMode {
@@ -9,7 +9,11 @@ export class PaginatorMode {
     this.page = page
   }
 
-  async execute(url: string, maxPages: number = 20): Promise<ScrapingResult> {
+  async execute(url: string, input: number | PaginateOptions = {}): Promise<ScrapingResult> {
+    const options: PaginateOptions = typeof input === 'number' ? { maxPages: input } : input
+    const maxPages = options.maxPages ?? 20
+    const waitBetween = options.waitBetween ?? 0
+
     logger.info('[paginator] Starting pagination scraping...')
 
     try {
@@ -19,17 +23,26 @@ export class PaginatorMode {
       while (currentPage <= maxPages) {
         logger.info(`[paginator] Scraping page ${currentPage}/${maxPages}`)
 
-        const pageData = await this.extractPageData()
+        const pageData = await this.extractPageData(options.itemSelector)
         allData.push(...pageData)
 
-        const hasNext = await this.clickNextPage()
+        if (currentPage === maxPages) break
+
+        const hasNext = await this.clickNextPage(options.nextSelector)
 
         if (!hasNext) {
           logger.info(`[paginator] Reached last page at ${currentPage}`)
           break
         }
 
-        await this.page.waitForLoadState('networkidle')
+        await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {
+          logger.warn('[paginator] Network did not go idle, continuing')
+        })
+
+        if (waitBetween > 0) {
+          await this.page.waitForTimeout(waitBetween)
+        }
+
         currentPage++
       }
 
@@ -53,9 +66,11 @@ export class PaginatorMode {
     }
   }
 
-  private async extractPageData(): Promise<any[]> {
-    return await this.page.evaluate(() => {
-      const items = document.querySelectorAll('[class*="item"], [class*="result"], [class*="product"]')
+  private async extractPageData(itemSelector?: string): Promise<any[]> {
+    const selector = itemSelector || '[class*="item"], [class*="result"], [class*="product"]'
+
+    return await this.page.evaluate((sel) => {
+      const items = document.querySelectorAll(sel)
       const results: any[] = []
 
       for (const item of items) {
@@ -68,11 +83,11 @@ export class PaginatorMode {
       }
 
       return results
-    })
+    }, selector)
   }
 
-  private async clickNextPage(): Promise<boolean> {
-    const nextSelectors = [
+  private async clickNextPage(nextSelector?: string): Promise<boolean> {
+    const nextSelectors = nextSelector ? [nextSelector] : [
       'a:has-text("Next")',
       'a[rel="next"]',
       '[class*="next"]',

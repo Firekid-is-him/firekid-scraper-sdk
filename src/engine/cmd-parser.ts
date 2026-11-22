@@ -18,8 +18,10 @@ export class CommandParser {
 
   private parseLine(line: string, lineNum: number): CmdStep | null {
     if (line.trim().startsWith('//')) return null
-    
-    const parts = line.trim().split(/\s+/)
+
+    const parts = this.tokenize(line.trim())
+    if (parts.length === 0) return null
+
     const action = parts[0].toUpperCase() as CmdAction
     const args = parts.slice(1).map(a => this.resolve(a))
 
@@ -40,6 +42,57 @@ export class CommandParser {
     }
 
     return { action, args, line: lineNum }
+  }
+
+  /*
+   * Splits a command line into tokens on whitespace. A token that starts
+   * with a single or double quote runs until the matching quote, so
+   * selectors and text containing spaces can be passed as one argument.
+   * Quotes inside a token (a[href="x"]) are kept as written.
+   */
+  private tokenize(line: string): string[] {
+    const tokens: string[] = []
+    let current = ''
+    let inToken = false
+    let quote: string | null = null
+
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i]
+
+      if (quote) {
+        if (ch === '\\' && (line[i + 1] === quote || line[i + 1] === '\\')) {
+          current += line[i + 1]
+          i++
+        } else if (ch === quote) {
+          quote = null
+        } else {
+          current += ch
+        }
+        continue
+      }
+
+      if (/\s/.test(ch)) {
+        if (inToken) {
+          tokens.push(current)
+          current = ''
+          inToken = false
+        }
+        continue
+      }
+
+      if (!inToken && (ch === '"' || ch === "'")) {
+        quote = ch
+        inToken = true
+        continue
+      }
+
+      current += ch
+      inToken = true
+    }
+
+    if (inToken) tokens.push(current)
+
+    return tokens
   }
 
   private indentOf(raw: string): number {
@@ -99,7 +152,7 @@ export class CommandParser {
   }
 
   parse(content: string, filePath: string = 'unknown'): CmdFile {
-    const lines = content.split('\n')
+    const lines = content.split(/\r?\n/)
     const { steps } = this.parseBlock(lines, 0, 0)
 
     const site = path.basename(filePath, '.cmd')

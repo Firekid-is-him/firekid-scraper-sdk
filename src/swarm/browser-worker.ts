@@ -1,8 +1,9 @@
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
 import type { Task, Seed } from '../types.js'
 import { applyGhost } from '../ghost/index.js'
-import { getNewSeed } from '../ghost/seed.js'
+import { getNewSeed, buildUserAgent, buildViewport } from '../ghost/seed.js'
 import { logger } from '../logger/logger.js'
+import { config } from '../config.js'
 
 export class BrowserWorker {
   private id: number
@@ -18,17 +19,17 @@ export class BrowserWorker {
   }
 
   async initialize(): Promise<void> {
+    const args = ['--disable-blink-features=AutomationControlled']
+    if (config.browser.noSandbox) args.push('--no-sandbox')
+
     this.browser = await chromium.launch({
-      headless: true,
-      args: [
-        '--disable-blink-features=AutomationControlled',
-        '--no-sandbox'
-      ]
+      headless: config.browser.headless,
+      args
     })
 
     this.context = await this.browser.newContext({
-      viewport: { width: 1920, height: 1080 },
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      viewport: buildViewport(this.seed),
+      userAgent: buildUserAgent(this.seed)
     })
 
     await applyGhost(this.context, { seed: this.seed })

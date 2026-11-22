@@ -6,23 +6,12 @@ export default defineConfig({
     'bin/firekid-scraper': 'bin/firekid-scraper.ts'
   },
   format: ['cjs', 'esm'],
-  dts: true,
+  dts: { entry: { index: 'src/index.ts' } },
   sourcemap: false,
   clean: true,
   splitting: false,
   minify: false,
   shims: true,
   skipNodeModulesBundle: true,
-  outExtension({ format }) {
-    return {
-      js: format === 'cjs' ? '.cjs' : '.js'
-    }
-  },
-  esbuildOptions(options, context) {
-    options.banner = {
-      js: context.format === 'cjs' 
-        ? '' 
-        : '#!/usr/bin/env node\n'
-    }
-  }
+  target: 'node20'
 })
